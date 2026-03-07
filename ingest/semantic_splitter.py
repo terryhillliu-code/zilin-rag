@@ -29,7 +29,7 @@ class SemanticSplitter:
     def __init__(
         self,
         max_chunk_tokens: int = 480,
-        min_chunk_chars: int = 100,
+        min_chunk_chars: int = 10,
         fallback_to_paragraph: bool = True
     ):
         self.max_chunk_tokens = max_chunk_tokens
@@ -64,16 +64,19 @@ class SemanticSplitter:
         ):
             chunks = self._split_by_paragraphs(content, filename, str(filepath), metadata)
         
-        # 处理超长 chunk
+        # 处理超长或超短 chunk
         processed = []
         for chunk in chunks:
             if chunk.char_count > self.max_chunk_chars:
                 processed.extend(self._split_long_chunk(chunk))
             elif chunk.char_count < self.min_chunk_chars and processed:
-                # 太短则合并到上一个
+                # 只有在标题相同的情况下才合并，或者是段落模式
                 prev = processed[-1]
-                merged = self._merge_chunks(prev, chunk)
-                processed[-1] = merged
+                if prev.h1 == chunk.h1 and prev.h2 == chunk.h2:
+                    merged = self._merge_chunks(prev, chunk)
+                    processed[-1] = merged
+                else:
+                    processed.append(chunk)
             else:
                 processed.append(chunk)
         
@@ -126,32 +129,34 @@ class SemanticSplitter:
         current_h2 = ''
         current_lines = []
         
-        for line in content.split('\n'):
-            if line.startswith('# ') and not line.startswith('##'):
-                if current_lines:
+        lines = content.split('\n')
+        for line in lines:
+            h1_match = line.startswith('# ') and not line.startswith('##')
+            h2_match = line.startswith('## ') and not line.startswith('###')
+            
+            if h1_match or h2_match:
+                # 碰到新标题，如果当前有内容，先存入旧 chunk
+                if any(ln.strip() for ln in current_lines):
                     chunks.append(self._build_chunk(
                         '\n'.join(current_lines),
                         source, filename, current_h1, current_h2, metadata
                     ))
-                current_h1 = line[2:].strip()
-                current_h2 = ''
-                current_lines = []
-            elif line.startswith('## ') and not line.startswith('###'):
-                if current_lines:
-                    chunks.append(self._build_chunk(
-                        '\n'.join(current_lines),
-                        source, filename, current_h1, current_h2, metadata
-                    ))
-                current_h2 = line[3:].strip()
+                
+                if h1_match:
+                    current_h1 = line[2:].strip()
+                    current_h2 = ''
+                else:
+                    current_h2 = line[3:].strip()
                 current_lines = []
             else:
                 current_lines.append(line)
         
-        if current_lines:
+        # 处理最后一段内容
+        if any(ln.strip() for ln in current_lines):
             chunks.append(self._build_chunk(
                 '\n'.join(current_lines),
                 source, filename, current_h1, current_h2, metadata
-              ))
+            ))
         
         return chunks
     
@@ -197,10 +202,11 @@ class SemanticSplitter:
     
     def _split_long_chunk(self, chunk: Chunk) -> list[Chunk]:
         """切分超长 chunk"""
+        # 1. 先尝试按段落切
         paragraphs = re.split(r'\n\s*\n', chunk.raw_text)
         
         result = []
-        current = []
+        current_text_segments = []
         current_len = 0
         
         for para in paragraphs:
@@ -208,24 +214,67 @@ class SemanticSplitter:
             if not para:
                 continue
             
-            if current_len + len(para) > self.max_chunk_chars and current:
+            # 如果单段就超长，递归切分单段
+            if len(para) > self.max_chunk_chars:
+                # 如果当前有积压，先清空
+                if current_text_segments:
+                    result.append(self._build_chunk(
+                        '\n\n'.join(current_text_segments),
+                        chunk.source, chunk.filename, chunk.h1, chunk.h2, chunk.metadata
+                    ))
+                    current_text_segments = []
+                    current_len = 0
+                
+                # 切分超长单段
+                sub_chunks = self._split_single_paragraph(para)
+                for sub in sub_chunks:
+                    result.append(self._build_chunk(
+                        sub,
+                        chunk.source, chunk.filename, chunk.h1, chunk.h2, chunk.metadata
+                    ))
+                continue
+
+            if current_len + len(para) > self.max_chunk_chars and current_text_segments:
                 result.append(self._build_chunk(
-                    '\n\n'.join(current),
+                    '\n\n'.join(current_text_segments),
                     chunk.source, chunk.filename, chunk.h1, chunk.h2, chunk.metadata
                 ))
-                current = [para]
+                current_text_segments = [para]
                 current_len = len(para)
             else:
-                current.append(para)
+                current_text_segments.append(para)
                 current_len += len(para)
         
-        if current:
+        if current_text_segments:
             result.append(self._build_chunk(
-                '\n\n'.join(current),
+                '\n\n'.join(current_text_segments),
                 chunk.source, chunk.filename, chunk.h1, chunk.h2, chunk.metadata
             ))
         
         return result
+
+    def _split_single_paragraph(self, text: str) -> list[str]:
+        """即使没有段落，也强制按字数切分"""
+        res = []
+        start = 0
+        while start < len(text):
+            end = start + self.max_chunk_chars
+            # 尽量在标点符号处断开
+            if end < len(text):
+                # 在 end 附近往回找标点
+                search_range = text[max(start, end-20):end]
+                last_punct = -1
+                for p in ["。", "！", "？", ".", "!", "?", "；", ";"]:
+                    pos = search_range.rfind(p)
+                    if pos > last_punct:
+                        last_punct = pos
+                
+                if last_punct != -1:
+                    end = max(start, end-20) + last_punct + 1
+            
+            res.append(text[start:end].strip())
+            start = end
+        return res
     
     def _build_chunk(
         self,
