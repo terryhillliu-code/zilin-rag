@@ -1,0 +1,39 @@
+# zhiwei-rag 配置
+
+paths:
+  # 数据源
+  obsidian_vault: ~/Documents/ZhiweiVault
+  research_library: ~/Documents/Library
+  klib_db: ~/Documents/Library/klib.db
+  
+  # 存储
+  lance_db: ~/zhiwei-rag/data/lance_db
+  models_cache: ~/zhiwei-rag/data/models
+
+embedding:
+  model_name: BAAI/bge-large-zh-v1.5
+  device: mps  # Apple Silicon，备选：cpu
+  dimension: 1024
+  normalize: true
+  idle_timeout: 300  # 5分钟无调用自动释放
+
+reranker:
+  model_name: BAAI/bge-reranker-base
+  device: mps
+  batch_size: 8
+  score_threshold: 0.1
+
+splitter:
+  max_chunk_tokens: 480
+  min_chunk_chars: 100
+  # 研报通常没有标准 Markdown 标题，启用段落回退
+  fallback_to_paragraph: true
+
+retrieval:
+  vector_top_k: 15
+  fts_top_k: 10
+  graph_top_k: 5
+  rerank_top_k: 5
+
+context:
+  max_tokens: 4000
