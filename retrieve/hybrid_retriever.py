@@ -2,6 +2,7 @@
 三轨混合检索器 + 精排
 """
 import hashlib
+import sys
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -96,7 +97,7 @@ class HybridRetriever:
         
         # 去重
         deduplicated = self._deduplicate(all_results)
-        print(f"[Hybrid] 去重后: {len(deduplicated)} 条")
+        print(f"[Hybrid] 去重后: {len(deduplicated)} 条", file=sys.stderr)
         
         # 判断是否精排
         should_rerank = use_rerank if use_rerank is not None else self.config.enable_rerank
@@ -128,9 +129,9 @@ class HybridRetriever:
                 for r in results:
                     r.score *= self.config.vector_weight
                 all_results.extend(results)
-                print(f"[Hybrid] 向量轨道: {len(results)} 条")
+                print(f"[Hybrid] 向量轨道: {len(results)} 条", file=sys.stderr)
             except Exception as e:
-                print(f"[Hybrid] 向量轨道错误: {e}")
+                print(f"[Hybrid] 向量轨道错误: {e}", file=sys.stderr)
         
         # 轨道 B：FTS 检索
         if self.fts_track:
@@ -142,9 +143,9 @@ class HybridRetriever:
                 for r in results:
                     r.score *= self.config.fts_weight
                 all_results.extend(results)
-                print(f"[Hybrid] FTS 轨道: {len(results)} 条")
+                print(f"[Hybrid] FTS 轨道: {len(results)} 条", file=sys.stderr)
             except Exception as e:
-                print(f"[Hybrid] FTS 轨道错误: {e}")
+                print(f"[Hybrid] FTS 轨道错误: {e}", file=sys.stderr)
         
         # 轨道 C：图谱检索
         if self.graph_track:
@@ -156,9 +157,9 @@ class HybridRetriever:
                 for r in results:
                     r.score *= self.config.graph_weight
                 all_results.extend(results)
-                print(f"[Hybrid] 图谱轨道: {len(results)} 条")
+                print(f"[Hybrid] 图谱轨道: {len(results)} 条", file=sys.stderr)
             except Exception as e:
-                print(f"[Hybrid] 图谱轨道错误: {e}")
+                print(f"[Hybrid] 图谱轨道错误: {e}", file=sys.stderr)
         
         return all_results
     

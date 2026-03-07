@@ -5,6 +5,7 @@ Cross-Encoder 精排器
 - 按需加载，用完释放
 """
 import gc
+import sys
 import time
 from typing import Optional
 from dataclasses import dataclass
@@ -62,7 +63,7 @@ class Reranker:
         if not results:
             return []
         
-        print(f"[Reranker] 输入 {len(results)} 条，精排中...")
+        print(f"[Reranker] 输入 {len(results)} 条，精排中...", file=sys.stderr)
         start_time = time.time()
         
         # 加载模型
@@ -102,7 +103,7 @@ class Reranker:
             ]
             
             elapsed = time.time() - start_time
-            print(f"[Reranker] 完成，耗时 {elapsed:.2f}s，过滤后 {len(filtered)} 条")
+            print(f"[Reranker] 完成，耗时 {elapsed:.2f}s，过滤后 {len(filtered)} 条", file=sys.stderr)
             
             return filtered[:top_k]
             
@@ -115,7 +116,7 @@ class Reranker:
         if self._model is not None:
             return
         
-        print(f"[Reranker] 加载模型: {self.model_name}")
+        print(f"[Reranker] 加载模型: {self.model_name}", file=sys.stderr)
         start = time.time()
         
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -136,7 +137,7 @@ class Reranker:
         self._model.eval()
         
         elapsed = time.time() - start
-        print(f"[Reranker] 模型加载完成，耗时 {elapsed:.1f}s")
+        print(f"[Reranker] 模型加载完成，耗时 {elapsed:.1f}s", file=sys.stderr)
     
     def _compute_scores(self, pairs: list[tuple[str, str]]) -> list[float]:
         """计算一批 query-passage 对的分数"""
@@ -169,7 +170,7 @@ class Reranker:
         if self._model is None:
             return
         
-        print("[Reranker] 释放模型内存")
+        print("[Reranker] 释放模型内存", file=sys.stderr)
         
         del self._model
         del self._tokenizer

@@ -45,11 +45,11 @@ class GraphTrack:
         """
         # 检查依赖文件
         if not os.path.exists(self.cli_script):
-            print(f"[GraphTrack] CLI 脚本不存在: {self.cli_script}")
+            print(f"[GraphTrack] CLI 脚本不存在: {self.cli_script}", file=sys.stderr)
             return self._fallback_search(query, top_k)
         
         if not os.path.exists(self.graph_db_path):
-            print(f"[GraphTrack] 图数据库不存在: {self.graph_db_path}")
+            print(f"[GraphTrack] 图数据库不存在: {self.graph_db_path}", file=sys.stderr)
             return []
         
         try:
@@ -70,7 +70,7 @@ class GraphTrack:
             )
             
             if result.returncode != 0:
-                print(f"[GraphTrack] CLI 错误: {result.stderr}")
+                print(f"[GraphTrack] CLI 错误: {result.stderr}", file=sys.stderr)
                 return self._fallback_search(query, top_k)
             
             # 解析 JSON 输出
@@ -94,13 +94,13 @@ class GraphTrack:
             return results
             
         except subprocess.TimeoutExpired:
-            print(f"[GraphTrack] 查询超时 ({self.timeout}s)")
+            print(f"[GraphTrack] 查询超时 ({self.timeout}s)", file=sys.stderr)
             return []
         except json.JSONDecodeError as e:
-            print(f"[GraphTrack] JSON 解析错误: {e}")
+            print(f"[GraphTrack] JSON 解析错误: {e}", file=sys.stderr)
             return self._fallback_search(query, top_k)
         except Exception as e:
-            print(f"[GraphTrack] 查询错误: {e}")
+            print(f"[GraphTrack] 查询错误: {e}", file=sys.stderr)
             return []
     
     def _fallback_search(self, query: str, top_k: int) -> list[RetrievalResult]:
@@ -136,5 +136,5 @@ class GraphTrack:
             return matched[:top_k]
             
         except Exception as e:
-            print(f"[GraphTrack] 降级检索错误: {e}")
+            print(f"[GraphTrack] 降级检索错误: {e}", file=sys.stderr)
             return []

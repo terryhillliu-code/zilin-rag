@@ -6,6 +6,7 @@
 """
 import gc
 import time
+import sys
 import threading
 from typing import Optional
 import numpy as np
@@ -94,7 +95,7 @@ class EmbeddingManager:
         
         self._loading = True
         try:
-            print(f"[EmbeddingManager] 加载模型: {self.model_name} (device={self.device})")
+            print(f"[EmbeddingManager] 加载模型: {self.model_name} (device={self.device})", file=sys.stderr)
             start = time.time()
             
             from sentence_transformers import SentenceTransformer
@@ -104,7 +105,7 @@ class EmbeddingManager:
             )
             
             elapsed = time.time() - start
-            print(f"[EmbeddingManager] 模型加载完成，耗时 {elapsed:.1f}s")
+            print(f"[EmbeddingManager] 模型加载完成，耗时 {elapsed:.1f}s", file=sys.stderr)
         finally:
             self._loading = False
     
@@ -131,7 +132,7 @@ class EmbeddingManager:
         if self._model is None:
             return
         
-        print("[EmbeddingManager] 空闲超时，释放模型内存")
+        print("[EmbeddingManager] 空闲超时，释放模型内存", file=sys.stderr)
         
         del self._model
         self._model = None

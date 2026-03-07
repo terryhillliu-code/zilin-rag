@@ -4,6 +4,7 @@
 """
 import os
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
@@ -33,7 +34,7 @@ class FTSTrack:
             检索结果列表
         """
         if not os.path.exists(self.db_path):
-            print(f"[FTSTrack] 数据库不存在: {self.db_path}")
+            print(f"[FTSTrack] 数据库不存在: {self.db_path}", file=sys.stderr)
             return []
         
         try:
@@ -47,7 +48,7 @@ class FTSTrack:
             """)
             if not cursor.fetchone():
                 # 尝试从常规表查询（降级）
-                print("[FTSTrack] 未找到 books_fts，使用 search_simple 降级")
+                print("[FTSTrack] 未找到 books_fts，使用 search_simple 降级", file=sys.stderr)
                 conn.close()
                 return self.search_simple(query, top_k)
             # FTS5 查询 (针对 klib.db 的实际 schema: title, author, toc, summary)
@@ -85,7 +86,7 @@ class FTSTrack:
             return results
             
         except Exception as e:
-            print(f"[FTSTrack] 查询错误: {e}")
+            print(f"[FTSTrack] 查询错误: {e}", file=sys.stderr)
             return self.search_simple(query, top_k)
     
     def search_simple(self, query: str, top_k: int = 10) -> list[RetrievalResult]:
@@ -126,5 +127,5 @@ class FTSTrack:
             return results
             
         except Exception as e:
-            print(f"[FTSTrack] 简化查询错误: {e}")
+            print(f"[FTSTrack] 简化查询错误: {e}", file=sys.stderr)
             return []
