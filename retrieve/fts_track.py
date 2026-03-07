@@ -50,13 +50,12 @@ class FTSTrack:
                 print("[FTSTrack] 未找到 books_fts，使用 search_simple 降级")
                 conn.close()
                 return self.search_simple(query, top_k)
-            
-            # FTS5 查询
+            # FTS5 查询 (针对 klib.db 的实际 schema: title, author, toc, summary)
             cursor.execute("""
                 SELECT 
                     title,
-                    content,
-                    source,
+                    summary,
+                    toc,
                     bm25(books_fts) as score
                 FROM books_fts
                 WHERE books_fts MATCH ?
@@ -66,15 +65,17 @@ class FTSTrack:
             
             results = []
             for row in cursor.fetchall():
-                title, content, source, score = row
+                title, summary, toc, score = row
+                # 合并摘要和目录作为文本内容
+                text_content = f"摘要: {summary[:300]}\n目录: {toc[:200]}"
+                
                 # BM25 分数是负数，越大（接近0）越相关
-                # 转换为正数分数
                 normalized_score = 1 / (1 + abs(score))
                 
                 results.append(RetrievalResult(
-                    text=f"{title}\n\n{content[:500]}",
-                    raw_text=content[:500] if content else "",
-                    source=source or "",
+                    text=f"{title}\n\n{text_content}",
+                    raw_text=text_content,
+                    source='klib.db',
                     score=normalized_score,
                     track='fts',
                     metadata={'title': title}
@@ -99,31 +100,27 @@ class FTSTrack:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # 获取所有表
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = [t[0] for t in cursor.fetchall()]
-            
             results = []
             
-            # 尝试从 books 表查询
-            if 'books' in tables:
-                cursor.execute("""
-                    SELECT title, content, source
-                    FROM books
-                    WHERE title LIKE ? OR content LIKE ?
-                    LIMIT ?
-                """, (f'%{query}%', f'%{query}%', top_k))
-                
-                for row in cursor.fetchall():
-                    title, content, source = row
-                    results.append(RetrievalResult(
-                        text=f"{title}\n\n{content[:500] if content else ''}",
-                        raw_text=content[:500] if content else "",
-                        source=source or "",
-                        score=0.5,  # LIKE 匹配给固定分数
-                        track='fts',
-                        metadata={'title': title}
-                    ))
+            # 针对 klib.db 的 books 表进行 LIKE 查询
+            cursor.execute("""
+                SELECT title, summary, toc
+                FROM books
+                WHERE title LIKE ? OR summary LIKE ? OR toc LIKE ?
+                LIMIT ?
+            """, (f'%{query}%', f'%{query}%', f'%{query}%', top_k))
+            
+            for row in cursor.fetchall():
+                title, summary, toc = row
+                text_content = f"摘要: {summary[:300] if summary else ''}\n目录: {toc[:200] if toc else ''}"
+                results.append(RetrievalResult(
+                    text=f"{title}\n\n{text_content}",
+                    raw_text=text_content,
+                    source='klib.db',
+                    score=0.5,
+                    track='fts',
+                    metadata={'title': title}
+                ))
             
             conn.close()
             return results
