@@ -34,7 +34,7 @@ class HybridConfig:
     # 精排配置
     enable_rerank: bool = True
     rerank_top_k: int = 5
-    rerank_threshold: float = 0.1
+    rerank_threshold: float = 0.01
 
 
 class HybridRetriever:

@@ -33,7 +33,7 @@ class Reranker:
         model_name: str = 'BAAI/bge-reranker-base',
         device: str = 'mps',
         batch_size: int = 8,
-        score_threshold: float = 0.1
+        score_threshold: float = 0.01
     ):
         self.model_name = model_name
         self.device = device
@@ -102,8 +102,13 @@ class Reranker:
                 if r.rerank_score >= self.score_threshold
             ]
             
+            # 方案 B: 智能阈值保障 —— 如果过滤后结果太少，降级返回 Top-3，避免空结果
+            if len(filtered) < 3 and len(scored_results) > 0:
+                # 至少返回前 3 条（如果原始结果足够），或全部原始结果
+                filtered = scored_results[:min(3, len(scored_results))]
+            
             elapsed = time.time() - start_time
-            print(f"[Reranker] 完成，耗时 {elapsed:.2f}s，过滤后 {len(filtered)} 条", file=sys.stderr)
+            print(f"[Reranker] 完成，耗时 {elapsed:.2f}s，最终返回 {len(filtered)} 条", file=sys.stderr)
             
             return filtered[:top_k]
             
