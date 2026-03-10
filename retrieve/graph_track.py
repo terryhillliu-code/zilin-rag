@@ -25,6 +25,11 @@ class GraphTrack:
         self.graph_db_path = os.path.expanduser(graph_db_path)
         self.cli_script = os.path.expanduser(cli_script)
         self.timeout = timeout
+        
+        # 强制指定 zhiwei-scheduler 的 venv 路径，以确保找到 lightrag 依赖
+        self.venv_python = os.path.expanduser("~/zhiwei-scheduler/venv/bin/python3")
+        if not os.path.exists(self.venv_python):
+            self.venv_python = sys.executable # 保持回退
     
     def search(
         self,
@@ -56,7 +61,7 @@ class GraphTrack:
             # 通过子进程调用，避免 asyncio 冲突
             result = subprocess.run(
                 [
-                    sys.executable,
+                    self.venv_python,
                     self.cli_script,
                     "--query", query,
                     "--mode", mode,
