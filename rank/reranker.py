@@ -43,6 +43,62 @@ class Reranker:
         self._model = None
         self._tokenizer = None
     
+    def _rerank_core(
+        self,
+        query: str,
+        results: list,  # list[RetrievalResult]
+        top_k: int = 5
+    ) -> list[RerankResult]:
+        """
+        精排核心逻辑（不含模型加载/卸载）
+        
+        Args:
+            query: 查询文本
+            results: 检索结果列表
+            top_k: 返回数量
+            
+        Returns:
+            精排后的结果列表
+        """
+        # 构建 query-passage 对
+        pairs = [(query, r.text) for r in results]
+        
+        # 分批计算分数
+        scores = []
+        for i in range(0, len(pairs), self.batch_size):
+            batch = pairs[i:i + self.batch_size]
+            batch_scores = self._compute_scores(batch)
+            scores.extend(batch_scores)
+        
+        # 组装结果
+        scored_results = []
+        for r, score in zip(results, scores):
+            scored_results.append(RerankResult(
+                text=r.text,
+                raw_text=r.raw_text,
+                source=r.source,
+                original_score=r.score,
+                rerank_score=score,
+                track=r.track,
+                metadata=r.metadata
+            ))
+        
+        # 按精排分数排序
+        scored_results.sort(key=lambda x: x.rerank_score, reverse=True)
+        
+        # 过滤低分
+        filtered = [
+            r for r in scored_results
+            if r.rerank_score >= self.score_threshold
+        ]
+        
+        # 方案 B: 智能阈值保障 —— 如果过滤后结果太少，降级返回 Top-3，避免空结果
+        if len(filtered) < 3 and len(scored_results) > 0:
+            # 至少返回前 3 条（如果原始结果足够），或全部原始结果
+            filtered = scored_results[:min(3, len(scored_results))]
+        
+        return filtered[:top_k]
+    
     def rerank(
         self,
         query: str,
@@ -50,7 +106,7 @@ class Reranker:
         top_k: int = 5
     ) -> list[RerankResult]:
         """
-        对检索结果进行精排
+        对检索结果进行精排（标准模式：加载模型 -> 执行 -> 释放）
         
         Args:
             query: 查询文本
@@ -66,55 +122,57 @@ class Reranker:
         print(f"[Reranker] 输入 {len(results)} 条，精排中...", file=sys.stderr)
         start_time = time.time()
         
-        # 加载模型
-        self._load_model()
-        
         try:
-            # 构建 query-passage 对
-            pairs = [(query, r.text) for r in results]
+            # 加载模型
+            self._load_model()
             
-            # 分批计算分数
-            scores = []
-            for i in range(0, len(pairs), self.batch_size):
-                batch = pairs[i:i + self.batch_size]
-                batch_scores = self._compute_scores(batch)
-                scores.extend(batch_scores)
-            
-            # 组装结果
-            scored_results = []
-            for r, score in zip(results, scores):
-                scored_results.append(RerankResult(
-                    text=r.text,
-                    raw_text=r.raw_text,
-                    source=r.source,
-                    original_score=r.score,
-                    rerank_score=score,
-                    track=r.track,
-                    metadata=r.metadata
-                ))
-            
-            # 按精排分数排序
-            scored_results.sort(key=lambda x: x.rerank_score, reverse=True)
-            
-            # 过滤低分
-            filtered = [
-                r for r in scored_results
-                if r.rerank_score >= self.score_threshold
-            ]
-            
-            # 方案 B: 智能阈值保障 —— 如果过滤后结果太少，降级返回 Top-3，避免空结果
-            if len(filtered) < 3 and len(scored_results) > 0:
-                # 至少返回前 3 条（如果原始结果足够），或全部原始结果
-                filtered = scored_results[:min(3, len(scored_results))]
+            # 执行精排
+            result = self._rerank_core(query, results, top_k)
             
             elapsed = time.time() - start_time
-            print(f"[Reranker] 完成，耗时 {elapsed:.2f}s，最终返回 {len(filtered)} 条", file=sys.stderr)
+            print(f"[Reranker] 完成，耗时 {elapsed:.2f}s，最终返回 {len(result)} 条", file=sys.stderr)
             
-            return filtered[:top_k]
+            return result
             
         finally:
             # 释放模型
             self._unload_model()
+    
+    def rerank_without_unload(
+        self,
+        query: str,
+        results: list,  # list[RetrievalResult]
+        top_k: int = 5
+    ) -> list[RerankResult]:
+        """
+        对检索结果进行精排（常驻模式：不释放模型）
+        
+        供 FastAPI 服务使用，模型加载后保持常驻
+        
+        Args:
+            query: 查询文本
+            results: 检索结果列表
+            top_k: 返回数量
+            
+        Returns:
+            精排后的结果列表
+        """
+        if not results:
+            return []
+        
+        print(f"[Reranker] 输入 {len(results)} 条，精排中 (常驻模式)...", file=sys.stderr)
+        start_time = time.time()
+        
+        # 确保模型已加载
+        self._load_model()
+        
+        # 执行精排（不释放模型）
+        result = self._rerank_core(query, results, top_k)
+        
+        elapsed = time.time() - start_time
+        print(f"[Reranker] 完成，耗时 {elapsed:.2f}s，最终返回 {len(result)} 条", file=sys.stderr)
+        
+        return result
     
     def _load_model(self):
         """加载模型"""
