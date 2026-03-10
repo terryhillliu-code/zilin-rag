@@ -60,8 +60,15 @@ class Reranker:
         Returns:
             精排后的结果列表
         """
+        # 过滤掉 text 为 None 的结果
+        valid_results = [r for r in results if r.text]
+        
+        if not valid_results:
+            print(f"[Reranker] 没有有效的检索结果", file=sys.stderr)
+            return []
+        
         # 构建 query-passage 对
-        pairs = [(query, r.text) for r in results]
+        pairs = [(query, r.text) for r in valid_results]
         
         # 分批计算分数
         scores = []
@@ -70,9 +77,9 @@ class Reranker:
             batch_scores = self._compute_scores(batch)
             scores.extend(batch_scores)
         
-        # 组装结果
+        # 组装结果（使用 valid_results 而不是原始 results）
         scored_results = []
-        for r, score in zip(results, scores):
+        for r, score in zip(valid_results, scores):
             scored_results.append(RerankResult(
                 text=r.text,
                 raw_text=r.raw_text,
