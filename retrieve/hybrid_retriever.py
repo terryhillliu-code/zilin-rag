@@ -12,9 +12,43 @@ from retrieve.graph_track import GraphTrack
 from retrieve.embedding_manager import EmbeddingManager
 from rank.reranker import Reranker, RerankResult
 
-# ==================== 常驻精排服务客户端 ====================
+# ==================== 常驻服务客户端 ====================
 
 _RERANK_SERVICE_URL = "http://127.0.0.1:8765/rerank"
+_EMBED_SERVICE_URL = "http://127.0.0.1:8765/embed"
+
+
+def call_embed_service(texts: list[str]) -> Optional[list[list[float]]]:
+    """
+    调用常驻 Embedding 服务
+    
+    Args:
+        texts: 文本列表
+        
+    Returns:
+        向量列表，失败返回 None
+    """
+    try:
+        import requests
+        
+        resp = requests.post(
+            _EMBED_SERVICE_URL,
+            json={"texts": texts},
+            timeout=60
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            embeddings = data.get("embeddings", [])
+            print(f"[Hybrid] 常驻 Embedding 服务：编码 {len(texts)} 条文本", file=sys.stderr)
+            return embeddings
+        else:
+            print(f"[Hybrid] Embedding 服务返回异常状态码：{resp.status_code}", file=sys.stderr)
+            
+    except Exception as e:
+        print(f"[Hybrid] ⚠️ Embedding 常驻服务调用失败，降级到本地：{e}", file=sys.stderr)
+    
+    return None
 
 
 def _call_rerank_service(

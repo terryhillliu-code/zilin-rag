@@ -4,13 +4,51 @@ LanceDB 向量存储
 - 支持向量检索 + 元数据过滤
 """
 import os
+import sys
 from pathlib import Path
-from typing import Optional, Iterator
+from typing import Optional, Iterator, List
 from dataclasses import dataclass, asdict
 import numpy as np
 
 import lancedb
 import pyarrow as pa
+
+# ==================== 常驻 Embedding 服务客户端 ====================
+
+_EMBED_SERVICE_URL = "http://127.0.0.1:8765/embed"
+
+
+def call_embed_service(texts: list[str]) -> Optional[list[list[float]]]:
+    """
+    调用常驻 Embedding 服务
+    
+    Args:
+        texts: 文本列表
+        
+    Returns:
+        向量列表，失败返回 None
+    """
+    try:
+        import requests
+        
+        resp = requests.post(
+            _EMBED_SERVICE_URL,
+            json={"texts": texts},
+            timeout=60
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            embeddings = data.get("embeddings", [])
+            print(f"[LanceStore] 常驻 Embedding 服务：编码 {len(texts)} 条文本", file=sys.stderr)
+            return embeddings
+        else:
+            print(f"[LanceStore] Embedding 服务返回异常状态码：{resp.status_code}", file=sys.stderr)
+            
+    except Exception as e:
+        print(f"[LanceStore] ⚠️ Embedding 常驻服务调用失败，降级到本地：{e}", file=sys.stderr)
+    
+    return None
 
 
 @dataclass
@@ -144,11 +182,19 @@ class LanceStore:
         top_k: int = 10,
         filter_sql: Optional[str] = None
     ) -> list[dict]:
-        """文本检索（自动编码）"""
-        if self.embedding_manager is None:
-            raise ValueError("需要 embedding_manager 才能进行文本检索")
+        """文本检索（优先常驻服务，降级本地）"""
+        # 先尝试常驻 Embedding 服务
+        embeddings = call_embed_service([query_text])
         
-        query_vector = self.embedding_manager.encode_single(query_text)
+        if embeddings is not None and len(embeddings) > 0:
+            query_vector = np.array(embeddings[0])
+        else:
+            # 降级到本地
+            print(f"[LanceStore] 降级到本地 Embedding", file=sys.stderr)
+            if self.embedding_manager is None:
+                raise ValueError("需要 embedding_manager 才能进行文本检索")
+            query_vector = self.embedding_manager.encode_single(query_text)
+        
         return self.search(query_vector, top_k, filter_sql)
     
     def count(self) -> int:
