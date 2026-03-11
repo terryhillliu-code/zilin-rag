@@ -12,6 +12,8 @@ import numpy as np
 
 import lancedb
 import pyarrow as pa
+import fcntl
+from contextlib import contextmanager
 
 # ==================== 常驻 Embedding 服务客户端 ====================
 
@@ -83,6 +85,20 @@ class LanceStore:
         self.db = lancedb.connect(self.db_path)
         self.embedding_manager = embedding_manager
         self._table = None
+        self.lock_file = os.path.join(self.db_path, "write.lock")
+
+    @contextmanager
+    def _write_lock(self):
+        """文件锁上下文管理器，确保写入串行化"""
+        lock_f = open(self.lock_file, "w")
+        try:
+            # 阻塞式获取排他锁
+            fcntl.flock(lock_f, fcntl.LOCK_EX)
+            yield
+        finally:
+            # 释放锁并关闭文件
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
+            lock_f.close()
     
     @property
     def table(self):
@@ -118,11 +134,12 @@ class LanceStore:
         ])
         
         # 创建空表
-        self._table = self.db.create_table(
-            self.TABLE_NAME,
-            schema=schema,
-            mode="overwrite"
-        )
+        with self._write_lock():
+            self._table = self.db.create_table(
+                self.TABLE_NAME,
+                schema=schema,
+                mode="overwrite"
+            )
         print(f"[LanceStore] 创建表: {self.TABLE_NAME}, 维度: {dimension}")
     
     def add_documents(self, docs: list[Document], batch_size: int = 100):
@@ -141,9 +158,10 @@ class LanceStore:
             records.append(record)
         
         # 分批写入
-        for i in range(0, len(records), batch_size):
-            batch = records[i:i + batch_size]
-            self.table.add(batch)
+        with self._write_lock():
+            for i in range(0, len(records), batch_size):
+                batch = records[i:i + batch_size]
+                self.table.add(batch)
         
         print(f"[LanceStore] 写入 {len(docs)} 条文档")
     
@@ -207,11 +225,13 @@ class LanceStore:
         """删除指定来源的文档（用于增量更新）"""
         if self.table is None:
             return
-        self.table.delete(f"source = '{source}'")
+        with self._write_lock():
+            self.table.delete(f"source = '{source}'")
     
     def clear(self):
         """清空所有数据"""
         if self.TABLE_NAME in self.db.table_names():
-            self.db.drop_table(self.TABLE_NAME)
-            self._table = None
+            with self._write_lock():
+                self.db.drop_table(self.TABLE_NAME)
+                self._table = None
             print("[LanceStore] 已清空表")
