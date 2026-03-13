@@ -27,22 +27,22 @@ def test_vector_track():
 
 
 def test_fts_track():
-    """测试 FTS 轨道"""
-    from retrieve.fts_track import FTSTrack
-    
-    track = FTSTrack()
-    
-    print("\n--- [FTS 轨道] 测试 ---")
-    results = track.search("机器学习", top_k=5)
-    
+    """测试 FTS 轨道（LanceDB FTS）"""
+    from retrieve.vector_track import VectorTrack
+
+    track = VectorTrack()
+
+    print("\n--- [FTS 轨道] 测试 (LanceDB) ---")
+    results = track.search_fts("机器学习", top_k=5)
+
     print(f"返回 {len(results)} 条结果")
     if results:
         r = results[0]
-        print(f"  最相关标题: {r.metadata.get('title', 'N/A')}")
+        print(f"  来源: {r.source[:50]}...")
         print(f"  分数: {r.score:.4f}")
     else:
-        print("  (无结果，可能是数据库为空或不支持 FTS5)")
-    
+        print("  (无结果)")
+
     print("✅ FTS 轨道测试通过")
 
 

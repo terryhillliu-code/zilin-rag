@@ -79,8 +79,7 @@ zhiwei-rag/
 │   └── ingest_all.py
 ├── retrieve/           # 检索
 │   ├── embedding_manager.py
-│   ├── vector_track.py
-│   ├── fts_track.py
+│   ├── vector_track.py      # 向量检索 + FTS（LanceDB）
 │   ├── graph_track.py
 │   └── hybrid_retriever.py
 ├── rank/               # 精排

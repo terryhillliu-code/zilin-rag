@@ -1,16 +1,14 @@
 # zhiwei-rag/retrieve 架构文档
 
-> 生成时间：2026-03-09 22:16
-> 分析模型：qwen3-coder-next
+> 更新时间：2026-03-13
+> FTS-001: FTS 轨道已从 klib.db 迁移到 LanceDB
 
 ## 文件列表
 
-- fts_track.py: 131 行
-- __init__.py: 0 行
-- vector_track.py: 82 行
-- graph_track.py: 140 行
-- embedding_manager.py: 169 行
-- hybrid_retriever.py: 231 行
+- vector_track.py: 向量检索 + FTS（LanceDB）
+- graph_track.py: 图谱检索轨道
+- embedding_manager.py: Embedding 管理器
+- hybrid_retriever.py: 三轨融合检索核心
 
 ## 主要模块
 
@@ -18,19 +16,17 @@
 三轨融合检索核心
 
 ### vector_track.py
-LanceDB 向量检索轨道
-
-### fts_track.py
-FTS5 全文检索轨道
+LanceDB 向量检索 + 全文检索轨道
+- `search()`: 向量语义检索
+- `search_fts()`: jieba 分词 + FTS 关键词检索
 
 ### graph_track.py
-图谱检索轨道 (待修复)
+图谱检索轨道 (LightRAG)
 
 ## 依赖关系
 
 ```
 hybrid_retriever.py
-├── vector_track.py
-├── fts_track.py
+├── vector_track.py  (向量 + FTS)
 └── graph_track.py
 ```

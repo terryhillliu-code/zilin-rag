@@ -7,7 +7,6 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field
 
 from retrieve.vector_track import VectorTrack, RetrievalResult
-from retrieve.fts_track import FTSTrack
 from retrieve.graph_track import GraphTrack
 from retrieve.embedding_manager import EmbeddingManager
 from rank.reranker import Reranker, RerankResult
@@ -200,9 +199,6 @@ class HybridRetriever:
                 )
         else:
             self.lance_fts_track = None
-
-        # 保留旧的 FTSTrack 引用（兼容性，已不再使用）
-        self.fts_track = None
 
         # 轨道 C：图谱检索
         if self.config.enable_graph:
