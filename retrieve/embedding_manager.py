@@ -2,7 +2,12 @@
 本地 Embedding 管理器
 - MPS 加速（Apple Silicon）
 - 按需加载，首次约 3-5 秒
-- 空闲 5 分钟自动释放内存
+- 空闲 30 分钟自动释放内存（OPT-009 优化）
+
+OPT-009 优化说明：
+- 默认 idle_timeout 从 300s 提升至 1800s（30分钟）
+- 工作时段减少模型重复加载次数
+- 夜间仍会自动释放，避免内存压力
 """
 import gc
 import time
@@ -14,12 +19,12 @@ import numpy as np
 
 class EmbeddingManager:
     """线程安全的 Embedding 模型管理器"""
-    
+
     def __init__(
         self,
         model_name: str = 'BAAI/bge-large-zh-v1.5',
         device: str = 'mps',
-        idle_timeout: int = 300,
+        idle_timeout: int = 1800,  # OPT-009: 30分钟，减少重复加载
         normalize: bool = True
     ):
         self.model_name = model_name
@@ -111,9 +116,13 @@ class EmbeddingManager:
     
     def _schedule_cleanup(self):
         """安排空闲清理（需在锁内调用）"""
+        # OPT-009: idle_timeout <= 0 表示常驻模式，不自动卸载
+        if self.idle_timeout <= 0:
+            return
+
         if self._cleanup_timer:
             self._cleanup_timer.cancel()
-        
+
         self._cleanup_timer = threading.Timer(
             self.idle_timeout,
             self._try_unload
