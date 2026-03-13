@@ -15,16 +15,19 @@ from retrieve.vector_track import RetrievalResult
 
 class GraphTrack:
     """图谱检索轨道（子进程隔离）"""
-    
+
+    # 默认超时从 30s 降至 5s，避免阻塞整体响应
+    DEFAULT_TIMEOUT = 5
+
     def __init__(
         self,
         graph_db_path: str = "~/zhiwei-scheduler/graph_db",
         cli_script: str = "~/zhiwei-scheduler/graph_query_cli.py",
-        timeout: int = 30
+        timeout: int = None
     ):
         self.graph_db_path = os.path.expanduser(graph_db_path)
         self.cli_script = os.path.expanduser(cli_script)
-        self.timeout = timeout
+        self.timeout = timeout or self.DEFAULT_TIMEOUT
         
         # 强制指定 zhiwei-scheduler 的 venv 路径，以确保找到 lightrag 依赖
         self.venv_python = os.path.expanduser("~/zhiwei-scheduler/venv/bin/python3")

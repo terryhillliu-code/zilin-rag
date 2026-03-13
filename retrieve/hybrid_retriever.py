@@ -131,17 +131,20 @@ class HybridConfig:
     vector_top_k: int = 15
     fts_top_k: int = 10
     graph_top_k: int = 5
-    
+
     # 轨道权重
     vector_weight: float = 0.5
     fts_weight: float = 0.3
     graph_weight: float = 0.2
-    
+
     # 轨道开关
     enable_vector: bool = True
     enable_fts: bool = True
     enable_graph: bool = True
-    
+
+    # GraphTrack 超时配置（秒）- OPT-010 优化
+    graph_timeout: int = 5
+
     # 精排配置
     enable_rerank: bool = True
     rerank_top_k: int = 5
@@ -177,7 +180,10 @@ class HybridRetriever:
             self.fts_track = None
         
         if self.config.enable_graph:
-            self.graph_track = GraphTrack(graph_db_path=graph_db_path)
+            self.graph_track = GraphTrack(
+                graph_db_path=graph_db_path,
+                timeout=self.config.graph_timeout
+            )
         else:
             self.graph_track = None
         
