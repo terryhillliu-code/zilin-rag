@@ -153,8 +153,17 @@ class HybridConfig:
 
 
 class HybridRetriever:
-    """三轨混合检索器"""
-    
+    """三轨混合检索器
+
+    轨道说明：
+    - 向量轨道：LanceDB 向量检索（语义相似度）
+    - FTS 轨道：LanceDB 全文检索（关键词匹配，jieba 分词）
+    - 图谱轨道：LightRAG 知识图谱（实体关系）
+
+    FTS-001 更新：FTS 轨道已从 klib.db 迁移到 LanceDB，
+    实现真正的 Hybrid Search（同一数据源的向量 + FTS）。
+    """
+
     def __init__(
         self,
         config: Optional[HybridConfig] = None,
@@ -165,8 +174,10 @@ class HybridRetriever:
     ):
         self.config = config or HybridConfig()
         self.embedding_manager = embedding_manager
-        
+        self.lance_db_path = lance_db_path
+
         # 初始化各轨道
+        # 轨道 A：向量检索（LanceDB）
         if self.config.enable_vector:
             self.vector_track = VectorTrack(
                 lance_db_path=lance_db_path,
@@ -174,12 +185,26 @@ class HybridRetriever:
             )
         else:
             self.vector_track = None
-        
+
+        # 轨道 B：FTS 检索（LanceDB，FTS-001 已迁移）
+        # 使用同一个 VectorTrack 实例，调用其 FTS 方法
         if self.config.enable_fts:
-            self.fts_track = FTSTrack(db_path=klib_db_path)
+            if self.vector_track:
+                # 复用向量轨道实例
+                self.lance_fts_track = self.vector_track
+            else:
+                # 如果向量轨道禁用，单独创建
+                self.lance_fts_track = VectorTrack(
+                    lance_db_path=lance_db_path,
+                    embedding_manager=embedding_manager
+                )
         else:
-            self.fts_track = None
-        
+            self.lance_fts_track = None
+
+        # 保留旧的 FTSTrack 引用（兼容性，已不再使用）
+        self.fts_track = None
+
+        # 轨道 C：图谱检索
         if self.config.enable_graph:
             self.graph_track = GraphTrack(
                 graph_db_path=graph_db_path,
@@ -187,7 +212,7 @@ class HybridRetriever:
             )
         else:
             self.graph_track = None
-        
+
         # 精排器（按需创建）
         self.reranker = None
     
@@ -251,17 +276,17 @@ class HybridRetriever:
             except Exception as e:
                 print(f"[Hybrid] 向量轨道错误: {e}", file=sys.stderr)
         
-        # 轨道 B：FTS 检索
-        if self.fts_track:
+        # 轨道 B：FTS 检索（LanceDB）
+        if self.lance_fts_track:
             try:
-                results = self.fts_track.search(
+                results = self.lance_fts_track.search_fts(
                     query,
                     top_k=self.config.fts_top_k
                 )
                 for r in results:
                     r.score *= self.config.fts_weight
                 all_results.extend(results)
-                print(f"[Hybrid] FTS 轨道: {len(results)} 条", file=sys.stderr)
+                print(f"[Hybrid] FTS 轨道 (LanceDB): {len(results)} 条", file=sys.stderr)
             except Exception as e:
                 print(f"[Hybrid] FTS 轨道错误: {e}", file=sys.stderr)
         
@@ -348,10 +373,10 @@ class HybridRetriever:
         return self.vector_track.search(query, top_k=top_k)
     
     def search_fts_only(self, query: str, top_k: int = 10) -> list[RetrievalResult]:
-        """仅 FTS 检索"""
-        if not self.fts_track:
+        """仅 FTS 检索（LanceDB）"""
+        if not self.lance_fts_track:
             return []
-        return self.fts_track.search(query, top_k=top_k)
+        return self.lance_fts_track.search_fts(query, top_k=top_k)
     
     def search_graph_only(self, query: str, top_k: int = 5) -> list[RetrievalResult]:
         """仅图谱检索"""
