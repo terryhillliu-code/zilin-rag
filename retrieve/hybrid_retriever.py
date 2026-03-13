@@ -142,8 +142,9 @@ class HybridConfig:
     enable_fts: bool = True
     enable_graph: bool = True
 
-    # GraphTrack 超时配置（秒）- OPT-010 优化
-    graph_timeout: int = 5
+    # GraphTrack 超时配置（秒）- OPT-002 优化：从 5s 提升到 120s
+    # 原因：LightRAG 首次查询需 60+ 秒初始化，5s 超时导致静默返回空结果
+    graph_timeout: int = 120
 
     # 精排配置
     enable_rerank: bool = True
