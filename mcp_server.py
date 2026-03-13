@@ -75,8 +75,7 @@ def get_system_health() -> str:
 
     status = {
         "services": {},
-        "docker": {},
-        "rag_api": {}
+        "docker": {}
     }
 
     # 检查 launchd 服务
@@ -100,12 +99,51 @@ def get_system_health() -> str:
             for line in result.stdout.strip().split("\n"):
                 parts = line.split()
                 if len(parts) >= 3:
-                    pid, status_code, name = parts[0], parts[1], parts[2]
+                    pid, last_exit_code, name = parts[0], parts[1], parts[2]
                     if name in services:
-                        status["services"][name] = {
-                            "status": "running" if status_code == "0" else "error",
-                            "pid": pid
-                        }
+                        # 使用 PID 存在性判断运行状态
+                        # launchctl list 格式: PID 上次退出码 服务名
+                        # PID 不是 "-" 说明进程正在运行
+                        is_running = pid != "-"
+
+                        if name == "com.zhiwei.rag-api":
+                            # rag-api 需要额外检查 health 接口
+                            if not is_running:
+                                status["services"][name] = {
+                                    "status": "unhealthy",
+                                    "pid": pid
+                                }
+                            else:
+                                # 进程存在，检查 health 接口
+                                try:
+                                    import requests
+                                    resp = requests.get("http://127.0.0.1:8765/health", timeout=5)
+                                    if resp.ok:
+                                        health_data = resp.json()
+                                        status["services"][name] = {
+                                            "status": "healthy",
+                                            "pid": pid,
+                                            "embedding_loaded": health_data.get("embedding_loaded"),
+                                            "reranker_loaded": health_data.get("reranker_loaded")
+                                        }
+                                    else:
+                                        status["services"][name] = {
+                                            "status": "degraded",
+                                            "pid": pid,
+                                            "reason": f"health check failed: {resp.status_code}"
+                                        }
+                                except Exception as e:
+                                    status["services"][name] = {
+                                        "status": "degraded",
+                                        "pid": pid,
+                                        "reason": f"health check error: {str(e)}"
+                                    }
+                        else:
+                            # 其他服务仅用 PID 判断
+                            status["services"][name] = {
+                                "status": "running" if is_running else "stopped",
+                                "pid": pid
+                            }
     except Exception as e:
         status["services"]["error"] = str(e)
 
@@ -126,15 +164,6 @@ def get_system_health() -> str:
                         status["docker"][parts[0]] = parts[1]
     except Exception as e:
         status["docker"]["error"] = str(e)
-
-    # 检查 rag-api
-    try:
-        import requests
-        response = requests.get("http://127.0.0.1:8765/health", timeout=5)
-        if response.ok:
-            status["rag_api"] = response.json()
-    except:
-        status["rag_api"]["status"] = "unreachable"
 
     return json.dumps(status, ensure_ascii=False, indent=2)
 
