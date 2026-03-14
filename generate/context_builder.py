@@ -91,26 +91,41 @@ class ContextBuilder:
     def _format_result(self, result, index: int) -> str:
         """格式化单个检索结果"""
         lines = []
-        
+
         # 来源标注
         if self.config.include_source:
             source = getattr(result, 'source', 'unknown')
             # 简化路径显示
             if '/' in source:
                 source = source.split('/')[-1]
-            lines.append(f"[来源 {index}: {source}]")
-        
+
+            # MM-005: 增强引用信息
+            metadata = getattr(result, 'metadata', {})
+            chunk_type = metadata.get('chunk_type', 'text')
+            page = metadata.get('page', 0)
+
+            # 构建来源标签
+            type_label = {"text": "文字", "figure": "图表", "table": "表格", "frame": "视频帧"}.get(chunk_type, "内容")
+            if page > 0:
+                source_label = f"[来源 {index}: {source} 第{page}页 {type_label}]"
+            elif chunk_type != "text":
+                source_label = f"[来源 {index}: {source} {type_label}]"
+            else:
+                source_label = f"[来源 {index}: {source}]"
+
+            lines.append(source_label)
+
         # 分数（可选）
         if self.config.include_score:
             if hasattr(result, 'rerank_score'):
                 lines.append(f"相关度: {result.rerank_score:.2f}")
             elif hasattr(result, 'score'):
                 lines.append(f"相关度: {result.score:.2f}")
-        
+
         # 内容
         text = getattr(result, 'text', str(result))
         lines.append(text)
-        
+
         return '\n'.join(lines)
     
     def _load_template(self, name: str) -> str:

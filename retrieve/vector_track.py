@@ -80,6 +80,10 @@ class VectorTrack:
                     'h2': r.get('h2', ''),
                     'category': r.get('category', ''),
                     'tags': r.get('tags', ''),
+                    # MM-005: 引用标注字段
+                    'chunk_type': r.get('chunk_type', 'text'),
+                    'page': r.get('page', 0),
+                    'figure_path': r.get('figure_path', ''),
                 }
             ))
 
