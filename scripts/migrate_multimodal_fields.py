@@ -205,16 +205,20 @@ def verify():
 
     # 检查新字段
     new_fields = ["chunk_type", "page", "timestamp", "figure_path"]
+    all_fields_exist = True
     for field in new_fields:
         if field in field_names:
             print(f"[验证] ✓ {field} 字段存在")
         else:
             print(f"[验证] ✗ {field} 字段缺失")
+            all_fields_exist = False
 
-    # 检查 chunk_type 默认值
-    df = table.to_lance().to_table(columns=['id', 'chunk_type', 'page']).to_pandas()
-    text_count = (df['chunk_type'] == 'text').sum()
-    print(f"[验证] chunk_type='text': {text_count}/{count}")
+    # 只有所有字段都存在时才检查值
+    if all_fields_exist:
+        # 检查 chunk_type 默认值
+        df = table.to_lance().to_table(columns=['id', 'chunk_type', 'page']).to_pandas()
+        text_count = (df['chunk_type'] == 'text').sum()
+        print(f"[验证] chunk_type='text': {text_count}/{count}")
 
     # 测试 FTS 搜索
     print("\n[验证] 测试 FTS 搜索...")
