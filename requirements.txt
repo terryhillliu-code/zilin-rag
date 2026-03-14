@@ -9,10 +9,17 @@ torch>=2.0.0
 # Reranker
 transformers>=4.35.0
 
+# 多模态支持
+python-pptx>=0.6.21        # PPT 解析
+Pillow>=10.0.0             # 图片处理
+paddlepaddle>=2.5.0        # OCR 依赖
+paddleocr>=2.7.0           # OCR 引擎
+
 # 工具
 pyyaml>=6.0
 numpy>=1.24.0
 tqdm>=4.65.0
+requests>=2.28.0
 
 # 测试
 pytest>=7.0.0

@@ -5,10 +5,14 @@ paths:
   obsidian_vault: ~/Documents/ZhiweiVault
   research_library: ~/Documents/Library
   klib_db: ~/Documents/Library/klib.db
-  
+
   # 存储
   lance_db: ~/zhiwei-rag/data/lance_db
   models_cache: ~/zhiwei-rag/data/models
+
+  # 多模态
+  image_output: /tmp/zhiwei_images
+  ppt_image_output: /tmp/zhiwei_ppt_images
 
 embedding:
   model_name: BAAI/bge-large-zh-v1.5
@@ -37,3 +41,35 @@ retrieval:
 
 context:
   max_tokens: 4000
+
+# 多模态配置
+multimodal:
+  # OCR 配置
+  ocr:
+    enabled: true
+    engine: paddleocr  # paddleocr / easyocr
+    lang: ch           # ch / en
+    use_angle_cls: true
+    use_gpu: false
+    use_mps: true      # Apple Silicon 加速
+
+  # VLM 配置
+  vlm:
+    enabled: true
+    prefer_local: true  # 优先本地模型
+    local_model: qwen2-vl-2b  # qwen2-vl-7b / qwen2-vl-2b / minicpm-v
+    cloud_model: qwen-vl-plus  # 云端降级模型
+    device: auto       # auto / cuda / mps / cpu
+    max_tokens: 1024
+
+  # 图片处理
+  image:
+    min_size: 100          # 最小图片尺寸
+    extract_from_pdf: true # 从 PDF 提取图片
+    extract_from_ppt: true # 从 PPT 提取图片
+    dedupe: true           # 图片去重
+
+  # PPT 解析
+  ppt:
+    extract_images: true
+    extract_notes: true
