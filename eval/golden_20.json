@@ -1,0 +1,122 @@
+[
+  {
+    "query": "文中 Vertex AI Model Garden 对应的 URL 链接是什么？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#1",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: A Multitude of Models\n\ns and model versions easily, quickly, and within the\nexpectations of enterprise security and privacy is "
+  },
+  {
+    "query": "评估浸没式应用中内存和存储产品组件级兼容性和可靠性的文档编号是多少？",
+    "expected_id": "obsidian:30_Knowledge_Base/Server-Architecture/🔴 7505 - Evaluating Component Level Compatibility and Reliability of Memory and Storage Products for I....md:0",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/30_Knowledge_Base/Server-Architecture/🔴 7505 - Evaluating Component Level Compatibility and Reliability of Memory and Storage Products for I....md",
+    "expected_content": "来源: 🔴 7505 - Evaluating Component Level Compatibility and Reliability of Memory and Storage Products for I... | 章节: 7505 - Evaluating Component Level Compatibility and Reliability of Memory and Storag"
+  },
+  {
+    "query": "\"Technical Monitoring\"索引项指向的章节号是多少？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#1",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: Index\n\ne=\"index-term\"}, [Comprehensive\n      Monitoring](#ch07.html_id1705){data-type=\"index:locator\"}\n    - [technical monitor"
+  },
+  {
+    "query": "工作原型与生产就绪型生成式AI系统之间的差距被文本形容为什么？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#5",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: Preface\n\nthe gap between a working prototype\nand a production-ready generative AI system is massive, complex, and\nfilled with o"
+  },
+  {
+    "query": "根据文本，Example 2-8 中的策略步骤（policy step）会产生确切多少个事物？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/AI Agents The Definitive Guide (Nicole Koenigstein).md#15",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/AI Agents The Definitive Guide (Nicole Koenigstein).md",
+    "expected_content": "来源: AI Agents The Definitive Guide (Nicole Koenigstein) | 章节: ToT as an engineering shortcut | 小节: How to Make Your Agent Take Action and Reflect\n\n[Example 2-8](#ch02.html_CallingModel){data-type=\"xre"
+  },
+  {
+    "query": "文档\"7245 - Enabling an Open Ecosystem for 100% AI Infrastructure Testing_v2\"的文件大小是多少 MB？",
+    "expected_id": "obsidian:30_Knowledge_Base/AI-Systems/🟡 7245 - Enabling an Open Ecosystem for 100 AI Infrastructure Testing v2.md:0",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/30_Knowledge_Base/AI-Systems/🟡 7245 - Enabling an Open Ecosystem for 100 AI Infrastructure Testing v2.md",
+    "expected_content": "来源: 🟡 7245 - Enabling an Open Ecosystem for 100 AI Infrastructure Testing v2 | 章节: 7245 - Enabling an Open Ecosystem for 100% AI Infrastructure Testing_v2 | 分类: AI-Systems\n\n🔗 **原文链接**: [点击打开本地文档](file"
+  },
+  {
+    "query": "来源信息中明确列出的 GenAI on Google Cloud 的作者包括哪两位？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#42",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: From Framework to Reality: What Are Teams Actually Building, and How? | 小节: Technical Conversations\n\n:::: {.section data-type=\""
+  },
+  {
+    "query": "该文档的文件大小是多少 MB？",
+    "expected_id": "obsidian:30_Knowledge_Base/AI-Systems/🟡 Resolving Operational Barriers to AI Scale Up with Co Packaged Copper Optics Sockets.md:0",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/30_Knowledge_Base/AI-Systems/🟡 Resolving Operational Barriers to AI Scale Up with Co Packaged Copper Optics Sockets.md",
+    "expected_content": "来源: 🟡 Resolving Operational Barriers to AI Scale Up with Co Packaged Copper Optics Sockets | 章节: Resolving Operational Barriers to AI Scale Up with Co Packaged Copper Optics Sockets | 分类: AI-Systems\n\n"
+  },
+  {
+    "query": "文中提到的联系页面 URL 路径是什么？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#20",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: How to Contact Us\n\ncom/about/contact.html)"
+  },
+  {
+    "query": "2026 移动人工智能行业白皮书的文本状态说明内容需等待什么操作后自动写入？",
+    "expected_id": "obsidian:30_Knowledge_Base/Industry-Reports/⚪ 2026移动人工智能行业白皮书（英译中）.md:1",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/30_Knowledge_Base/Industry-Reports/⚪ 2026移动人工智能行业白皮书（英译中）.md",
+    "expected_content": "来源: ⚪ 2026移动人工智能行业白皮书（英译中） | 章节: 2026移动人工智能行业白皮书（英译中） | 小节: AI 深度摘要 | 分类: Industry-Reports\n\n*(等待向量化及摘要提取后自动写入)*"
+  },
+  {
+    "query": "当客户询问订单时，文中建议使用哪个工具来获取真实信息？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#8",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: Adding Intelligence Through Tools | 小节: Your Agent's First Tool\n\nWhen customers ask about orders, use the look_up_order tool\n  "
+  },
+  {
+    "query": "在 Refining Prompts 小节中，Explicit role and context definition 通过什么方式起作用？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#23",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: Optimization Strategies | 小节: Refining Prompts\n\nSeveral patterns have proven particularly effective across different\napplicatio"
+  },
+  {
+    "query": "Gemini 3 等模型是在包含哪些具体数据类型的 vast datasets 上进行训练的？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#38",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: The Origins of LLMs | 小节: Foundation Models and Multimodality\n\nGemini 3, for example, functions as an LLM because it is\nexplici"
+  },
+  {
+    "query": "文档\"8.30 - High Efficiency Mass Storage Cooling Innovation\"的文件大小是多少？",
+    "expected_id": "obsidian:30_Knowledge_Base/AI-Systems/🟡 8.30 - High Efficiency Mass Storage Cooling Innovation.md:0",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/30_Knowledge_Base/AI-Systems/🟡 8.30 - High Efficiency Mass Storage Cooling Innovation.md",
+    "expected_content": "来源: 🟡 8.30 - High Efficiency Mass Storage Cooling Innovation | 章节: 8.30 - High Efficiency Mass Storage Cooling Innovation | 分类: AI-Systems\n\n🔗 **原文链接**: [点击打开本地文档](file:///Users/liufang/Documents/Libra"
+  },
+  {
+    "query": "编号 7042 的文档小节名称是什么？",
+    "expected_id": "vault:/Users/liufang/Documents/ZhiweiVault/10_Knowledge_Base/Reports/【重要】AI系统/🟡 7042 - Leveraging Digital Infrastructure in Manufacturing for Performance Optimization.md#39",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/10_Knowledge_Base/Reports/【重要】AI系统/🟡 7042 - Leveraging Digital Infrastructure in Manufacturing for Performance Optimization.md",
+    "expected_content": "来源: 🟡 7042 - Leveraging Digital Infrastructure in Manufacturing for Performance Optimization | 章节: 7042 - Leveraging Digital Infrastructure in Manufacturing for Performance Optimization | 小节: AI 深度摘要 "
+  },
+  {
+    "query": "分类为 AI-Hardware 且编号 7690 的内容版本号是多少？",
+    "expected_id": "obsidian:30_Knowledge_Base/AI-Hardware/🔴 7690 - Deploying Heterogeneous Hardware in the Era of Agentic AI presented by Intel v2.md:1",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/30_Knowledge_Base/AI-Hardware/🔴 7690 - Deploying Heterogeneous Hardware in the Era of Agentic AI presented by Intel v2.md",
+    "expected_content": "来源: 🔴 7690 - Deploying Heterogeneous Hardware in the Era of Agentic AI presented by Intel v2 | 章节: 7690 - Deploying Heterogeneous Hardware in the Era of Agentic AI presented by Intel_v2 | 小节: AI 深度摘要 "
+  },
+  {
+    "query": "文档《End to End Object Detection with Transformers》的文件大小是多少 MB？",
+    "expected_id": "obsidian:30_Knowledge_Base/AI-Systems/🟡 End to End Object Detection with Transformers.md:0",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/30_Knowledge_Base/AI-Systems/🟡 End to End Object Detection with Transformers.md",
+    "expected_content": "来源: 🟡 End to End Object Detection with Transformers | 章节: End to End Object Detection with Transformers | 分类: AI-Systems\n\n🔗 **原文链接**: [点击打开本地文档](file:///Users/liufang/Documents/Library/【重复归档】/[2020]_E"
+  },
+  {
+    "query": "在来源为\"GenAI on Google Cloud\"的文档中，\"Data Versioning and Lineage\"小节所属的章节名称是什么？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#49",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: Building Reproducible Training Pipelines | 小节: Data Versioning and Lineage\n\nta\"}[]{#ch07.html_id1638 contenteditable=\"false\"\nda"
+  },
+  {
+    "query": "文中提到的医疗保健组织不得不开发什么来确保其临床决策支持系统尊重患者隐私法规并考虑公平性？",
+    "expected_id": "research:/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md#36",
+    "expected_source": "/Users/liufang/Documents/Library/AI-机器学习/GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.).md",
+    "expected_content": "来源: GenAI on Google Cloud (for . .) (Ayo Adedeji, Lavi Nigam etc.) | 章节: Layout-Aware Parsing with Google Cloud\n\ntions often fail to\naddress the unique ways LLMs can combine, interpret, and generate\ni"
+  },
+  {
+    "query": "文档\"83 - Adaptive Multi-Tenant Orchestration of AI Fabric_v2_v2\"的文件大小是多少？",
+    "expected_id": "obsidian:30_Knowledge_Base/AI-Systems/🟡 83 - Adaptive Multi-Tenant Orchestration of AI Fabric v2 v2.md:0",
+    "expected_source": "/Users/liufang/Documents/ZhiweiVault/30_Knowledge_Base/AI-Systems/🟡 83 - Adaptive Multi-Tenant Orchestration of AI Fabric v2 v2.md",
+    "expected_content": "来源: 🟡 83 - Adaptive Multi-Tenant Orchestration of AI Fabric v2 v2 | 章节: 83 - Adaptive Multi-Tenant Orchestration of AI Fabric_v2_v2 | 分类: AI-Systems\n\n🔗 **原文链接**: [点击打开本地文档](file:///Users/liufang/Docum"
+  }
+]

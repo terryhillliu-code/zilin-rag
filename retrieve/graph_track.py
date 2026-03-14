@@ -16,9 +16,9 @@ from retrieve.vector_track import RetrievalResult
 class GraphTrack:
     """图谱检索轨道（子进程隔离）"""
 
-    # 默认超时设为 120s（OPT-002）
-    # 原因：LightRAG 首次查询需 60+ 秒初始化，原 5s 超时导致静默返回空结果
-    DEFAULT_TIMEOUT = 120
+    # 默认超时设为 15s（OPT-002 更新）
+    # 原因：120s 超时过长拖慢整体检索，15s 内未返回则跳过图谱轨道
+    DEFAULT_TIMEOUT = 15
 
     def __init__(
         self,

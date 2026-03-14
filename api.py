@@ -23,11 +23,14 @@ class RAGConfig:
     vector_top_k: int = 15
     fts_top_k: int = 10
     graph_top_k: int = 5
-    
+
+    # 图谱配置
+    enable_graph: bool = True
+
     # 精排配置
     enable_rerank: bool = True
     rerank_top_k: int = 5
-    
+
     # 上下文配置
     max_context_tokens: int = 4000
     include_source: bool = True
@@ -58,7 +61,8 @@ class RAG:
                 fts_top_k=self.config.fts_top_k,
                 graph_top_k=self.config.graph_top_k,
                 enable_rerank=self.config.enable_rerank,
-                rerank_top_k=self.config.rerank_top_k
+                rerank_top_k=self.config.rerank_top_k,
+                enable_graph=self.config.enable_graph
             )
             self._retriever = HybridRetriever(
                 config=hybrid_config,
