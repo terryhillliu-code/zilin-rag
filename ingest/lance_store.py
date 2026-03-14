@@ -84,6 +84,11 @@ class Document:
     char_count: int            # 字符数
     tokenized_text: str = ""   # jieba 分词后文本（FTS 索引用）
     vector: list = None        # 向量
+    # 多模态字段 (MM-001)
+    chunk_type: str = "text"   # chunk 类型: "text" / "figure" / "table" / "frame"
+    page: int = 0              # 页码（PDF/PPT）
+    timestamp: str = ""        # 时间戳（视频），如 "03:25"
+    figure_path: str = ""      # 图片文件路径（可选）
 
     def __post_init__(self):
         if self.vector is None:
@@ -153,6 +158,11 @@ class LanceStore:
             pa.field("char_count", pa.int32()),
             pa.field("tokenized_text", pa.string()),  # jieba 分词文本（FTS）
             pa.field("vector", pa.list_(pa.float32(), dimension)),
+            # 多模态字段 (MM-001)
+            pa.field("chunk_type", pa.string()),
+            pa.field("page", pa.int32()),
+            pa.field("timestamp", pa.string()),
+            pa.field("figure_path", pa.string()),
         ])
         
         # 创建空表
