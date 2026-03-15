@@ -86,14 +86,29 @@ class SemanticSplitter:
         self,
         dir_path: Path,
         pattern: str = '**/*.md',
-        skip_hidden: bool = True
+        skip_hidden: bool = True,
+        skip_dirs: Optional[list[str]] = None
     ) -> Generator[Chunk, None, None]:
-        """切分目录下所有文件"""
+        """切分目录下所有文件
+
+        Args:
+            dir_path: 目录路径
+            pattern: 文件匹配模式
+            skip_hidden: 跳过隐藏文件
+            skip_dirs: 要跳过的目录名列表（如归档目录）
+        """
+        if skip_dirs is None:
+            skip_dirs = ['92_归档备份', '归档', 'Archive']
+
         for filepath in dir_path.glob(pattern):
+            # 检查是否在跳过目录中
+            path_str = str(filepath)
+            if any(skip_dir in path_str for skip_dir in skip_dirs):
+                continue
             if skip_hidden and (
                 filepath.name.startswith('.')
                 or filepath.name.startswith('_')
-                or '/.obsidian/' in str(filepath)
+                or '/.obsidian/' in path_str
             ):
                 continue
             for chunk in self.split_file(filepath):
