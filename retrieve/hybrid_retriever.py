@@ -139,7 +139,7 @@ class HybridConfig:
     # 轨道开关
     enable_vector: bool = True
     enable_fts: bool = True
-    enable_graph: bool = True
+    enable_graph: bool = False  # ADR-003: 暂停 GraphTrack（135x 延迟）
 
     # GraphTrack 超时配置（秒）- OPT-002 优化：从 5s 提升到 120s
     # 原因：LightRAG 首次查询需 60+ 秒初始化，5s 超时导致静默返回空结果

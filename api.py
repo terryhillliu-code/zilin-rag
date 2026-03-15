@@ -25,7 +25,7 @@ class RAGConfig:
     graph_top_k: int = 5
 
     # 图谱配置
-    enable_graph: bool = True
+    enable_graph: bool = False  # ADR-003: 暂停 GraphTrack
 
     # 精排配置
     enable_rerank: bool = True
