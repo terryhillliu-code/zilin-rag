@@ -270,7 +270,7 @@ class VLMDescriber:
         批量描述图片，带过滤和并发控制
 
         Args:
-            images: 图片列表
+            images: 图片列表（ExtractedImage 对象）
             source: 来源文件名（用于日志）
             show_progress: 是否显示进度
 
@@ -322,6 +322,102 @@ class VLMDescriber:
             result_idx += 1
 
         # 重新排序（按页码）
+        results.sort(key=lambda x: x.page)
+
+        if show_progress:
+            success = sum(1 for r in results if not r.skipped)
+            skipped = sum(1 for r in results if r.skipped)
+            print(f"[VLM] 完成: 成功 {success}, 跳过 {skipped}")
+
+        return results
+
+    async def describe_from_path(
+        self,
+        image_path: str,
+        page: int = 0,
+        context: str = ""
+    ) -> ImageDescription:
+        """
+        从文件路径描述单张图片
+
+        Args:
+            image_path: 图片文件路径
+            page: 页码
+            context: 上下文信息
+
+        Returns:
+            ImageDescription 对象
+        """
+        try:
+            # 读取图片文件
+            with open(image_path, "rb") as f:
+                image_bytes = f.read()
+
+            return await self.describe(image_bytes, page, context)
+
+        except FileNotFoundError:
+            return ImageDescription(
+                page=page,
+                description="",
+                image_type="other",
+                confidence=0.0,
+                skipped=True,
+                skip_reason=f"图片文件不存在: {image_path}"
+            )
+        except Exception as e:
+            return ImageDescription(
+                page=page,
+                description="",
+                image_type="other",
+                confidence=0.0,
+                skipped=True,
+                skip_reason=f"读取图片失败: {str(e)[:50]}"
+            )
+
+    async def describe_batch_from_paths(
+        self,
+        image_paths: List[str],
+        source: str = "",
+        show_progress: bool = True
+    ) -> List[ImageDescription]:
+        """
+        从文件路径批量描述图片
+
+        Args:
+            image_paths: 图片文件路径列表
+            source: 来源文件名（用于日志）
+            show_progress: 是否显示进度
+
+        Returns:
+            描述结果列表
+        """
+        if show_progress:
+            print(f"[VLM] 处理图片: {len(image_paths)} 张")
+
+        results: List[ImageDescription] = []
+        semaphore = asyncio.Semaphore(self.max_concurrent)
+
+        # 从文件名推断页码
+        def extract_page_from_path(path: str) -> int:
+            """从文件名提取页码"""
+            import re
+            match = re.search(r'page[_-]?(\d+)', Path(path).name, re.IGNORECASE)
+            if match:
+                return int(match.group(1)) - 1  # 转为 0-indexed
+            return 0
+
+        async def process_one(image_path: str) -> ImageDescription:
+            async with semaphore:
+                page = extract_page_from_path(image_path)
+                context = f"{source} 图片"
+                return await self.describe_from_path(image_path, page, context)
+
+        # 执行并发
+        results = await asyncio.gather(*[
+            process_one(path) for path in image_paths
+        ])
+
+        # 按页码排序
         results.sort(key=lambda x: x.page)
 
         if show_progress:

@@ -3,6 +3,7 @@
 - 提取文字内容 → chunk_type="text"
 - 提取图片 → VLM 描述 → chunk_type="figure"
 - 统一入库到 LanceDB
+- 支持 MinerU OCR（扫描件场景）
 """
 import asyncio
 import os
@@ -27,21 +28,71 @@ class TextChunk:
     char_count: int
 
 
-def extract_text_from_pdf(pdf_path: str) -> List[TextChunk]:
+def extract_text_from_pdf(
+    pdf_path: str,
+    use_mineru: bool = False,
+    mineru_images: Optional[List[str]] = None
+) -> Tuple[List[TextChunk], List[str]]:
     """
     从 PDF 提取文字，按页分块
 
     Args:
         pdf_path: PDF 文件路径
+        use_mineru: 是否优先使用 MinerU（扫描件场景）
+        mineru_images: MinerU 提取的图片路径列表（输出参数）
 
     Returns:
-        文字分块列表
+        (文字分块列表, 图片路径列表)
     """
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"PDF 文件不存在: {pdf_path}")
 
     chunks = []
+    image_paths = []
 
+    # ========== 优先使用 MinerU（针对扫描件）==========
+    if use_mineru:
+        try:
+            from .mineru_extractor import MinerUExtractor, MinerUResult
+
+            print("  [MinerU] 尝试 OCR 提取...")
+            extractor = MinerUExtractor(use_mps=False)
+            result = extractor.extract(pdf_path)
+
+            if result.success and result.text.strip():
+                print(f"  [MinerU] 提取成功: {len(result.text)} 字符, {len(result.image_paths)} 张图片")
+
+                # MinerU 返回 Markdown，按页面分隔符分割
+                # 常见分隔符: "--- Page X ---" 或类似
+                pages = _split_mineru_pages(result.text)
+
+                for i, page_text in enumerate(pages):
+                    text = _clean_text(page_text)
+                    if text.strip():
+                        chunks.append(TextChunk(
+                            text=text,
+                            page=i,
+                            char_count=len(text)
+                        ))
+
+                # 返回 MinerU 提取的图片路径
+                if mineru_images is not None:
+                    mineru_images.extend(result.image_paths)
+                image_paths = result.image_paths
+
+                # 如果提取到有效文字，直接返回
+                if chunks:
+                    return chunks, image_paths
+
+            else:
+                print(f"  [MinerU] 提取失败或无文字，回退到 PyMuPDF: {result.error}")
+
+        except ImportError:
+            print("  [MinerU] 未安装，回退到 PyMuPDF")
+        except Exception as e:
+            print(f"  [MinerU] 错误: {e}，回退到 PyMuPDF")
+
+    # ========== 回退到 PyMuPDF（现有逻辑）==========
     try:
         doc = fitz.open(pdf_path)
 
@@ -64,7 +115,37 @@ def extract_text_from_pdf(pdf_path: str) -> List[TextChunk]:
     except Exception as e:
         print(f"[PDF文字提取] 错误: {e}")
 
-    return chunks
+    return chunks, image_paths
+
+
+def _split_mineru_pages(markdown_text: str) -> List[str]:
+    """
+    将 MinerU 输出的 Markdown 按页分割
+
+    Args:
+        markdown_text: MinerU 输出的 Markdown 文本
+
+    Returns:
+        按页分割的文本列表
+    """
+    # MinerU 常见的页面分隔符
+    # 格式: "--- Page N ---" 或 "--- 第 N 页 ---" 或连续的 "## Page N"
+    separators = [
+        r'\n---+\s*Page\s*\d+\s*---+\n',  # --- Page 1 ---
+        r'\n---+\s*第\s*\d+\s*页\s*---+\n',  # --- 第 1 页 ---
+        r'\n##\s*Page\s*\d+\s*\n',  # ## Page 1
+        r'\n##\s*第\s*\d+\s*页\s*\n',  # ## 第 1 页
+        r'\n\\\\newpage\n',  # LaTeX 风格
+    ]
+
+    # 尝试按分隔符分割
+    for sep in separators:
+        parts = re.split(sep, markdown_text, flags=re.IGNORECASE)
+        if len(parts) > 1:
+            return [p.strip() for p in parts if p.strip()]
+
+    # 无分隔符，返回整体作为一个页面
+    return [markdown_text] if markdown_text.strip() else []
 
 
 def _clean_text(text: str) -> str:
@@ -134,7 +215,8 @@ async def ingest_pdf_multimodal(
     vlm_describer: Optional[VLMDescriber] = None,
     max_text_chars: int = 2000,
     max_images: int = 50,
-    show_progress: bool = True
+    show_progress: bool = True,
+    use_mineru: bool = False
 ) -> dict:
     """
     多模态 PDF 入库
@@ -146,6 +228,7 @@ async def ingest_pdf_multimodal(
         max_text_chars: 文字分块最大字符数
         max_images: 最大处理图片数
         show_progress: 显示进度
+        use_mineru: 是否使用 MinerU OCR（扫描件场景）
 
     Returns:
         {"text_chunks": N, "figure_chunks": M, "total": N+M}
@@ -153,10 +236,17 @@ async def ingest_pdf_multimodal(
     filename = Path(pdf_path).name
 
     print(f"\n[多模态入库] 处理: {filename}")
+    if use_mineru:
+        print("  [模式] MinerU OCR（扫描件优化）")
 
     # ========== 1. 提取文字 ==========
     print("  [1/3] 提取文字...")
-    text_chunks = extract_text_from_pdf(pdf_path)
+    mineru_images: List[str] = []
+    text_chunks, extracted_image_paths = extract_text_from_pdf(
+        pdf_path,
+        use_mineru=use_mineru,
+        mineru_images=mineru_images
+    )
 
     # 切分大块
     all_text_chunks = []
@@ -171,29 +261,41 @@ async def ingest_pdf_multimodal(
 
     if vlm_describer:
         print("  [2/3] 提取图片...")
-        images = extract_images(pdf_path)
 
-        # 限制数量
-        if len(images) > max_images:
-            print(f"        ⚠️ 图片过多 ({len(images)})，仅处理前 {max_images} 张")
-            images = images[:max_images]
-
-        # 过滤有效图片
-        valid_images = []
-        for img in images:
-            should, reason = vlm_describer.should_process(img)
-            if should:
-                valid_images.append(img)
-
-        print(f"        有效图片: {len(valid_images)} 张")
-
-        if valid_images:
-            print("  [3/3] VLM 描述图片...")
-            figure_descriptions = await vlm_describer.describe_batch(
-                valid_images,
+        # 优先使用 MinerU 提取的图片
+        if use_mineru and mineru_images:
+            print(f"        使用 MinerU 提取的图片: {len(mineru_images)} 张")
+            # 从文件路径读取图片并描述
+            figure_descriptions = await vlm_describer.describe_batch_from_paths(
+                mineru_images[:max_images],
                 source=filename,
                 show_progress=show_progress
             )
+        else:
+            # 回退到 PyMuPDF 提取图片
+            images = extract_images(pdf_path)
+
+            # 限制数量
+            if len(images) > max_images:
+                print(f"        ⚠️ 图片过多 ({len(images)})，仅处理前 {max_images} 张")
+                images = images[:max_images]
+
+            # 过滤有效图片
+            valid_images = []
+            for img in images:
+                should, reason = vlm_describer.should_process(img)
+                if should:
+                    valid_images.append(img)
+
+            print(f"        有效图片: {len(valid_images)} 张")
+
+            if valid_images:
+                print("  [3/3] VLM 描述图片...")
+                figure_descriptions = await vlm_describer.describe_batch(
+                    valid_images,
+                    source=filename,
+                    show_progress=show_progress
+                )
     else:
         print("  [2/3] 跳过图片（未提供 VLM 描述器）")
 
