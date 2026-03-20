@@ -22,10 +22,25 @@ embedding:
   idle_timeout: 300  # 5分钟无调用自动释放
 
 reranker:
-  model_name: BAAI/bge-reranker-base
-  device: mps
-  batch_size: 8
-  score_threshold: 0.1
+  # Reranker 类型：bge（本地）/ cohere（云端）/ voyage（云端）
+  type: bge
+
+  # BGE 配置（本地模型）
+  bge:
+    model_name: BAAI/bge-reranker-base
+    device: mps
+    batch_size: 8
+    score_threshold: 0.1
+
+  # Cohere 配置（云端 API，需设置 COHERE_API_KEY）
+  cohere:
+    model: rerank-multilingual-v3.0
+    score_threshold: 0.01
+
+  # Voyage 配置（云端 API，需设置 VOYAGE_API_KEY）
+  voyage:
+    model: rerank-2
+    score_threshold: 0.01
 
 splitter:
   max_chunk_tokens: 480
