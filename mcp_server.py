@@ -83,7 +83,6 @@ def get_system_health() -> str:
         "com.zhiwei.bot",
         "com.zhiwei.scheduler",
         "com.zhiwei.dev-worker",
-        "com.zhiwei.dispatcher",
         "com.zhiwei.rag-api"
     ]
 
