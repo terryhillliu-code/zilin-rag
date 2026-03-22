@@ -46,27 +46,6 @@ def test_fts_track():
     print("✅ FTS 轨道测试通过")
 
 
-def test_graph_track():
-    """测试图谱轨道"""
-    from retrieve.graph_track import GraphTrack
-    
-    track = GraphTrack()
-    
-    print("\n--- [图谱轨道] 测试 ---")
-    results = track.search("神经网络架构", top_k=3)
-    
-    print(f"返回 {len(results)} 条结果")
-    if results:
-        r = results[0]
-        print(f"  来源: {r.source}")
-        print(f"  分数: {r.score:.4f}")
-        print(f"  实体: {r.metadata.get('entities', [])}")
-    else:
-        print("  (无结果，正常现象，如果图谱未构建)")
-    
-    print("✅ 图谱轨道测试通过")
-
-
 def test_hybrid_retriever():
     """测试混合检索器"""
     from retrieve.hybrid_retriever import HybridRetriever, HybridConfig
@@ -77,10 +56,8 @@ def test_hybrid_retriever():
     config = HybridConfig(
         vector_top_k=10,
         fts_top_k=5,
-        graph_top_k=3,
         vector_weight=0.5,
-        fts_weight=0.3,
-        graph_weight=0.2
+        fts_weight=0.3
     )
     
     retriever = HybridRetriever(
@@ -110,7 +87,6 @@ if __name__ == '__main__':
     
     test_vector_track()
     test_fts_track()
-    test_graph_track()
     test_hybrid_retriever()
     
     print("\n" + "=" * 60)

@@ -7,7 +7,6 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field
 
 from retrieve.vector_track import VectorTrack, RetrievalResult
-from retrieve.graph_track import GraphTrack
 from retrieve.embedding_manager import EmbeddingManager
 from rank.reranker import Reranker, RerankResult
 
@@ -129,26 +128,23 @@ class HybridConfig:
     # 各轨道召回数量
     vector_top_k: int = 15
     fts_top_k: int = 10
-    graph_top_k: int = 5
 
     # 轨道权重
     vector_weight: float = 0.5
     fts_weight: float = 0.3
-    graph_weight: float = 0.2
 
     # 轨道开关
     enable_vector: bool = True
     enable_fts: bool = True
-    enable_graph: bool = False  # ADR-003: 暂停 GraphTrack（135x 延迟）
-
-    # GraphTrack 超时配置（秒）- OPT-002 优化：从 5s 提升到 120s
-    # 原因：LightRAG 首次查询需 60+ 秒初始化，5s 超时导致静默返回空结果
-    graph_timeout: int = 120
 
     # 精排配置
     enable_rerank: bool = True
     rerank_top_k: int = 5
     rerank_threshold: float = 0.01
+
+    # 图谱配置 (GraphTrack)
+    enable_graph: bool = False
+    graph_top_k: int = 5
 
 
 class HybridRetriever:
@@ -157,7 +153,6 @@ class HybridRetriever:
     轨道说明：
     - 向量轨道：LanceDB 向量检索（语义相似度）
     - FTS 轨道：LanceDB 全文检索（关键词匹配，jieba 分词）
-    - 图谱轨道：LightRAG 知识图谱（实体关系）
 
     FTS-001 更新：FTS 轨道已从 klib.db 迁移到 LanceDB，
     实现真正的 Hybrid Search（同一数据源的向量 + FTS）。
@@ -168,8 +163,7 @@ class HybridRetriever:
         config: Optional[HybridConfig] = None,
         embedding_manager: Optional[EmbeddingManager] = None,
         lance_db_path: str = "~/zhiwei-rag/data/lance_db",
-        klib_db_path: str = "~/Documents/Library/klib.db",
-        graph_db_path: str = "~/zhiwei-scheduler/graph_db"
+        klib_db_path: str = "~/Documents/Library/klib.db"
     ):
         self.config = config or HybridConfig()
         self.embedding_manager = embedding_manager
@@ -199,15 +193,6 @@ class HybridRetriever:
                 )
         else:
             self.lance_fts_track = None
-
-        # 轨道 C：图谱检索
-        if self.config.enable_graph:
-            self.graph_track = GraphTrack(
-                graph_db_path=graph_db_path,
-                timeout=self.config.graph_timeout
-            )
-        else:
-            self.graph_track = None
 
         # 精排器（按需创建）
         self.reranker = None
@@ -286,20 +271,6 @@ class HybridRetriever:
             except Exception as e:
                 print(f"[Hybrid] FTS 轨道错误: {e}", file=sys.stderr)
         
-        # 轨道 C：图谱检索
-        if self.graph_track:
-            try:
-                results = self.graph_track.search(
-                    query,
-                    top_k=self.config.graph_top_k
-                )
-                for r in results:
-                    r.score *= self.config.graph_weight
-                all_results.extend(results)
-                print(f"[Hybrid] 图谱轨道: {len(results)} 条", file=sys.stderr)
-            except Exception as e:
-                print(f"[Hybrid] 图谱轨道错误: {e}", file=sys.stderr)
-        
         return all_results
     
     def _deduplicate(self, results: list[RetrievalResult]) -> list[RetrievalResult]:
@@ -373,13 +344,6 @@ class HybridRetriever:
         if not self.lance_fts_track:
             return []
         return self.lance_fts_track.search_fts(query, top_k=top_k)
-    
-    def search_graph_only(self, query: str, top_k: int = 5) -> list[RetrievalResult]:
-        """仅图谱检索"""
-        if not self.graph_track:
-            return []
-        return self.graph_track.search(query, top_k=top_k)
-
 
 # 快捷函数
 def hybrid_search(query: str, top_k: int = 5, **kwargs) -> list:

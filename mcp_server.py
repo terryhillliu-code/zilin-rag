@@ -69,102 +69,17 @@ def search_knowledge(query: str, top_k: int = 5) -> str:
 
 
 @mcp.tool()
+@mcp.tool()
 def get_system_health() -> str:
     """获取知微系统健康状态，包括服务和 Docker 容器状态"""
-    import json
-
-    status = {
-        "services": {},
-        "docker": {}
-    }
-
-    # 检查 launchd 服务
-    services = [
-        "com.zhiwei.bot",
-        "com.zhiwei.scheduler",
-        "com.zhiwei.dev-worker",
-        "com.zhiwei.rag-api"
-    ]
-
     try:
-        result = subprocess.run(
-            ["launchctl", "list"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                parts = line.split()
-                if len(parts) >= 3:
-                    pid, last_exit_code, name = parts[0], parts[1], parts[2]
-                    if name in services:
-                        # 使用 PID 存在性判断运行状态
-                        # launchctl list 格式: PID 上次退出码 服务名
-                        # PID 不是 "-" 说明进程正在运行
-                        is_running = pid != "-"
-
-                        if name == "com.zhiwei.rag-api":
-                            # rag-api 需要额外检查 health 接口
-                            if not is_running:
-                                status["services"][name] = {
-                                    "status": "unhealthy",
-                                    "pid": pid
-                                }
-                            else:
-                                # 进程存在，检查 health 接口
-                                try:
-                                    import requests
-                                    resp = requests.get("http://127.0.0.1:8765/health", timeout=5)
-                                    if resp.ok:
-                                        health_data = resp.json()
-                                        status["services"][name] = {
-                                            "status": "healthy",
-                                            "pid": pid,
-                                            "embedding_loaded": health_data.get("embedding_loaded"),
-                                            "reranker_loaded": health_data.get("reranker_loaded")
-                                        }
-                                    else:
-                                        status["services"][name] = {
-                                            "status": "degraded",
-                                            "pid": pid,
-                                            "reason": f"health check failed: {resp.status_code}"
-                                        }
-                                except Exception as e:
-                                    status["services"][name] = {
-                                        "status": "degraded",
-                                        "pid": pid,
-                                        "reason": f"health check error: {str(e)}"
-                                    }
-                        else:
-                            # 其他服务仅用 PID 判断
-                            status["services"][name] = {
-                                "status": "running" if is_running else "stopped",
-                                "pid": pid
-                            }
+        sys.path.insert(0, str(Path.home() / "zhiwei-bot"))
+        from core.health_check import get_system_health_dict
+        status = get_system_health_dict()
+        return json.dumps(status, ensure_ascii=False, indent=2)
     except Exception as e:
-        status["services"]["error"] = str(e)
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
 
-    # 检查 Docker
-    try:
-        result = subprocess.run(
-            ["docker", "ps", "--format", "{{.Names}}\t{{.Status}}"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line:
-                    parts = line.split("\t")
-                    if len(parts) >= 2:
-                        status["docker"][parts[0]] = parts[1]
-    except Exception as e:
-        status["docker"]["error"] = str(e)
-
-    return json.dumps(status, ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
