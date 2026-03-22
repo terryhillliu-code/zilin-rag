@@ -129,9 +129,8 @@ class HybridConfig:
     vector_top_k: int = 15
     fts_top_k: int = 10
 
-    # 轨道权重
-    vector_weight: float = 0.5
-    fts_weight: float = 0.3
+    # RRF 融合参数 (v47.1 对齐 spec)
+    rrf_k: int = 60  # RRF 公式参数
 
     # 轨道开关
     enable_vector: bool = True
@@ -140,7 +139,7 @@ class HybridConfig:
     # 精排配置
     enable_rerank: bool = True
     rerank_top_k: int = 5
-    rerank_threshold: float = 0.01
+    rerank_threshold: float = 0.4  # v47.1: 从 0.01 对齐到 0.4
 
     # 图谱配置 (GraphTrack)
     enable_graph: bool = False
@@ -218,9 +217,13 @@ class HybridRetriever:
         """
         # 第一阶段：三轨召回
         all_results = self._multi_track_recall(query, filter_sql)
-        
-        # 去重
-        deduplicated = self._deduplicate(all_results)
+
+        # 第二阶段：RRF 融合 (v47.1 对齐 spec)
+        fused = self._rrf_fusion(all_results, k=self.config.rrf_k)
+        print(f"[Hybrid] RRF 融合后: {len(fused)} 条", file=sys.stderr)
+
+        # 去重（RRF 已处理同内容不同轨道的情况，这里做最终去重）
+        deduplicated = self._deduplicate(fused)
         print(f"[Hybrid] 去重后: {len(deduplicated)} 条", file=sys.stderr)
         
         # 判断是否精排
@@ -250,13 +253,12 @@ class HybridRetriever:
                     top_k=self.config.vector_top_k,
                     filter_sql=filter_sql
                 )
-                for r in results:
-                    r.score *= self.config.vector_weight
+                # v47.1: 移除权重乘法，改用 RRF 融合
                 all_results.extend(results)
                 print(f"[Hybrid] 向量轨道: {len(results)} 条", file=sys.stderr)
             except Exception as e:
                 print(f"[Hybrid] 向量轨道错误: {e}", file=sys.stderr)
-        
+
         # 轨道 B：FTS 检索（LanceDB）
         if self.lance_fts_track:
             try:
@@ -264,8 +266,7 @@ class HybridRetriever:
                     query,
                     top_k=self.config.fts_top_k
                 )
-                for r in results:
-                    r.score *= self.config.fts_weight
+                # v47.1: 移除权重乘法，改用 RRF 融合
                 all_results.extend(results)
                 print(f"[Hybrid] FTS 轨道 (LanceDB): {len(results)} 条", file=sys.stderr)
             except Exception as e:
@@ -293,7 +294,63 @@ class HybridRetriever:
                 seen[content_key] = r
         
         return list(seen.values())
-    
+
+    def _rrf_fusion(
+        self,
+        results: list[RetrievalResult],
+        k: int = 60
+    ) -> list[RetrievalResult]:
+        """
+        RRF (Reciprocal Rank Fusion) 融合
+
+        公式: Score = Σ 1/(k + rank)
+
+        将各轨道结果按排名融合，消除分数量纲差异。
+
+        Args:
+            results: 各轨道检索结果（已标记 track 属性）
+            k: RRF 参数，默认 60
+
+        Returns:
+            融合后的结果列表
+        """
+        # 按轨道分组
+        track_results = {}
+        for r in results:
+            track = r.track or 'unknown'
+            if track not in track_results:
+                track_results[track] = []
+            track_results[track].append(r)
+
+        # 各轨道按分数排序
+        for track in track_results:
+            track_results[track].sort(key=lambda x: x.score, reverse=True)
+
+        # RRF 融合
+        fused_scores = {}
+        result_map = {}
+
+        for track, track_list in track_results.items():
+            for rank, r in enumerate(track_list, 1):
+                # 使用内容 hash 作为 key
+                text_to_hash = (r.raw_text or r.text or '')[:200]
+                if not text_to_hash:
+                    text_to_hash = f"{r.source}:{r.track}"
+                content_key = hashlib.md5(text_to_hash.encode()).hexdigest()
+
+                if content_key not in fused_scores:
+                    fused_scores[content_key] = 0.0
+                    result_map[content_key] = r
+
+                # RRF 公式
+                fused_scores[content_key] += 1.0 / (k + rank)
+
+        # 更新分数并排序
+        for key, score in fused_scores.items():
+            result_map[key].score = score
+
+        return sorted(result_map.values(), key=lambda x: x.score, reverse=True)
+
     def _rerank(
         self,
         query: str,

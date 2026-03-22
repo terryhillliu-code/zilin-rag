@@ -47,7 +47,7 @@ class Reranker:
         model_name: str = 'BAAI/bge-reranker-base',
         device: str = 'mps',
         batch_size: int = 8,
-        score_threshold: float = 0.01
+        score_threshold: float = 0.4  # v47.1: 从 0.01 对齐到 0.4
     ):
         self.model_name = model_name
         self.device = device
@@ -333,7 +333,7 @@ class BgeReranker(BaseReranker):
         model_name: str = 'BAAI/bge-reranker-base',
         device: str = 'mps',
         batch_size: int = 8,
-        score_threshold: float = 0.01
+        score_threshold: float = 0.4  # v47.1: 从 0.01 对齐到 0.4
     ):
         self.model_name = model_name
         self.device = device
