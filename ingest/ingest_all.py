@@ -57,17 +57,23 @@ def index_directory(
     splitter: SemanticSplitter,
     pattern: str = "**/*.md",
     batch_size: int = 50,
-    source_prefix: str = ""
+    source_prefix: str = "",
+    skip_dirs: Optional[list[str]] = None
 ) -> int:
     """
     索引目录
-    
+
+    Args:
+        skip_dirs: DKI 隔离目录列表（从 config.yaml 读取）
+
     Returns:
         索引的 chunk 数量
     """
     # 收集所有 chunk
     print(f"[Ingest] 扫描目录: {dir_path}")
-    all_chunks = list(splitter.split_directory(dir_path, pattern=pattern))
+    if skip_dirs:
+        print(f"[Ingest] DKI 隔离目录: {skip_dirs}")
+    all_chunks = list(splitter.split_directory(dir_path, pattern=pattern, skip_dirs=skip_dirs))
     print(f"[Ingest] 共 {len(all_chunks)} 个 chunk")
     
     if not all_chunks:
@@ -137,9 +143,11 @@ def main():
     vault_path = Path(config['paths']['obsidian_vault']).expanduser()
     if vault_path.exists():
         print(f"\n[1/2] 索引 Obsidian Vault: {vault_path}")
+        # 从配置读取 DKI 隔离目录
+        skip_dirs = config.get('dki', {}).get('skip_dirs', None)
         count = index_directory(
             vault_path, store, embedding_manager, splitter,
-            source_prefix="vault:"
+            source_prefix="vault:", skip_dirs=skip_dirs
         )
         total_chunks += count
         print(f"      完成: {count} 个 chunk")
@@ -150,9 +158,10 @@ def main():
     research_path = Path(config['paths']['research_library']).expanduser()
     if research_path.exists():
         print(f"\n[2/2] 索引研报库: {research_path}")
+        skip_dirs = config.get('dki', {}).get('skip_dirs', None)
         count = index_directory(
             research_path, store, embedding_manager, splitter,
-            source_prefix="research:"
+            source_prefix="research:", skip_dirs=skip_dirs
         )
         total_chunks += count
         print(f"      完成: {count} 个 chunk")

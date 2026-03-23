@@ -96,9 +96,25 @@ class SemanticSplitter:
             pattern: 文件匹配模式
             skip_hidden: 跳过隐藏文件
             skip_dirs: 要跳过的目录名列表（如归档目录）
+
+        DKI (Dynamic Knowledge Isolation) 默认隔离目录:
+            - Inbox: 收集箱，待处理内容不入库
+            - 72_视频笔记_Video-Distill: 视频文稿，非正式知识不入库
+            - 90-99_系统与归档_System: 归档内容不入库
+            - 92_归档备份: 历史归档不入库
+            - attachments: 附件目录不入库
         """
         if skip_dirs is None:
-            skip_dirs = ['92_归档备份', '归档', 'Archive']
+            # DKI 默认隔离列表 - 这些目录的内容不入 RAG 索引
+            skip_dirs = [
+                'Inbox',                        # 收集箱：待处理内容
+                '72_视频笔记_Video-Distill',     # DKI：视频文稿隔离
+                '90-99_系统与归档_System',       # 系统归档
+                '92_归档备份',                   # 历史归档
+                '归档',
+                'Archive',
+                'attachments',                  # 附件目录
+            ]
 
         for filepath in dir_path.glob(pattern):
             # 检查是否在跳过目录中
