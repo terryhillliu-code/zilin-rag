@@ -53,6 +53,36 @@ class SemanticSplitter:
         content, frontmatter = self._extract_frontmatter(content)
         metadata = {**(frontmatter or {}), **(extra_metadata or {})}
         
+        # --- DKI (Dynamic Knowledge Isolation) 隔离校验 ---
+        # 1. 显式标志：YAML 中设置了 rag: false
+        if metadata.get('rag') is False:
+            return []
+            
+        # 2. 启发式识别：识别混入 Inbox 等目录的视频文稿
+        # 标志位：包含视频原始信息标签、特定的 ASR 来源字段
+        video_indicators = [
+            'type: video_distill',
+            '## 📹 原始信息',
+            'asr_source:',
+            'tier: ',
+            '[📹 原始信息]'
+        ]
+        
+        # 检查正文或元数据
+        is_video_doc = (
+            metadata.get('type') == 'video_distill' or
+            any(indicator in content for indicator in video_indicators)
+        )
+        
+        # 如果是视频文档且未显式开启 rag: true，则跳过
+        if is_video_doc and metadata.get('rag') is not True:
+            return []
+        
+        # 3. 路径级双重保险：即使目录没被过滤，特定文件名也可能触发
+        if filename.startswith('VIDEO_') and metadata.get('rag') is not True:
+            return []
+        # -----------------------------------------------
+
         # 尝试按标题切分
         chunks = self._split_by_headers(content, filename, str(filepath), metadata)
         
