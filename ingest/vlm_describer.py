@@ -12,13 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, TYPE_CHECKING
 
-from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-# 加载环境变量（zhiwei-bot 的 .env）
-_env_path = Path.home() / "zhiwei-bot" / ".env"
-if _env_path.exists():
-    load_dotenv(_env_path)
+# 密钥由调用方（server.py 或其他入口）通过 load_secrets() 加载
 
 if TYPE_CHECKING:
     from .pdf_image_extractor import ExtractedImage

@@ -20,12 +20,10 @@ from datetime import datetime
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dotenv import load_dotenv
-
-# 加载环境变量
-_env_path = Path.home() / "zhiwei-bot" / ".env"
-if _env_path.exists():
-    load_dotenv(_env_path)
+# 加载全局密钥
+sys.path.insert(0, str(Path.home() / "scripts"))
+from load_secrets import load_secrets
+load_secrets(silent=True)
 
 
 @dataclass

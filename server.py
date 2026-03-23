@@ -19,6 +19,11 @@ from typing import Optional
 # 添加项目根目录到 path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# 加载全局密钥（必须在其他导入之前）
+sys.path.insert(0, str(Path.home() / "scripts"))
+from load_secrets import load_secrets
+load_secrets(silent=True)
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
