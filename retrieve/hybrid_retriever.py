@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from retrieve.vector_track import VectorTrack, RetrievalResult
 from retrieve.embedding_manager import EmbeddingManager
 from rank.reranker import Reranker, RerankResult
+from retrieve.query_rewriter import rewrite_query
 
 # ==================== 常驻服务客户端 ====================
 
@@ -201,25 +202,25 @@ class HybridRetriever:
         query: str,
         top_k: int = 5,
         filter_sql: Optional[str] = None,
-        use_rerank: Optional[bool] = None
+        use_rerank: Optional[bool] = None,
+        use_rewrite: bool = True
     ) -> list:
-        """
-        三轨混合检索 + 可选精排
-        
-        Args:
-            query: 查询文本
-            top_k: 最终返回数量
-            filter_sql: 向量检索过滤条件
-            use_rerank: 是否使用精排（默认使用配置）
-            
-        Returns:
-            检索结果列表（RerankResult 或 RetrievalResult）
-        """
-        # 第一阶段：三轨召回
-        all_results = self._multi_track_recall(query, filter_sql)
+        # 第一阶段：Query 重写 (v5.2)
+        target_queries = [query]
+        if use_rewrite:
+            print(f"[Hybrid] 正在重写查询: {query}", file=sys.stderr)
+            # 使用 broad 模式召回更多维度
+            target_queries = rewrite_query(query, mode="broad")
+            print(f"[Hybrid] 重写后查询: {target_queries}", file=sys.stderr)
 
-        # 第二阶段：RRF 融合 (v47.1 对齐 spec)
-        fused = self._rrf_fusion(all_results, k=self.config.rrf_k)
+        # 第二阶段：多轨道多查询召回
+        all_recall_results = []
+        for q in target_queries:
+            results = self._multi_track_recall(q, filter_sql)
+            all_recall_results.extend(results)
+
+        # 第三阶段：RRF 融合
+        fused = self._rrf_fusion(all_recall_results, k=self.config.rrf_k)
         print(f"[Hybrid] RRF 融合后: {len(fused)} 条", file=sys.stderr)
 
         # 去重（RRF 已处理同内容不同轨道的情况，这里做最终去重）

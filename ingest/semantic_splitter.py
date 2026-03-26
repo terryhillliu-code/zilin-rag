@@ -60,12 +60,15 @@ class SemanticSplitter:
             
         # 2. 启发式识别：识别混入 Inbox 等目录的视频文稿
         # 标志位：包含视频原始信息标签、特定的 ASR 来源字段
+        # 注意：不使用 'tier: ' 因为论文也有 tier 字段
         video_indicators = [
             'type: video_distill',
             '## 📹 原始信息',
             'asr_source:',
-            'tier: ',
-            '[📹 原始信息]'
+            '[📹 原始信息]',
+            'video_duration:',
+            'platform: 抖音',
+            'platform: B站',
         ]
         
         # 检查正文或元数据

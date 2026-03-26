@@ -1,0 +1,39 @@
+# 知微情报中心 - 高信息增益信源 (v5.5)
+# 遵循“三层信息体系”原则：只关注 AI Builder、一手信源与高信噪比观察者
+
+sources:
+  - name: "Karpathy (X/Blog)"
+    url: "https://karpathy.ai/"
+    type: "blog"
+    priority: "high"
+    tags: ["builder", "karpathy", "llm_training"]
+
+  - name: "a16z AI Blog"
+    url: "https://a16z.com/category/ai-data/feed/"
+    type: "rss"
+    priority: "medium"
+    tags: ["trends", "vc", "infrastructure"]
+
+  - name: "DeepSeek Official Blog"
+    url: "https://blog.deepseek.com/"
+    type: "blog"
+    priority: "high"
+    tags: ["model_architecture", "domestic_ai"]
+
+  - name: "Anthropic News"
+    url: "https://www.anthropic.com/news"
+    type: "blog"
+    priority: "high"
+    tags: ["safety", "agents", "claude"]
+
+  - name: "Paper with Code (Trending)"
+    url: "https://paperswithcode.com/rss/latest"
+    type: "rss"
+    priority: "low"
+    tags: ["sota", "impl"]
+
+  - name: "TrendRadar (Real-time Hot Topics)"
+    url: "http://localhost:18790/trends"  # 已避开 Docker 18789
+    type: "trend"
+    priority: "high"
+    tags: ["trends", "early_signal", "cross_platform"]

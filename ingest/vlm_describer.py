@@ -8,9 +8,11 @@ import asyncio
 import base64
 import os
 import re
+import json
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Dict
 
 from openai import AsyncOpenAI
 
@@ -29,6 +31,30 @@ class ImageDescription:
     confidence: float            # 置信度 0-1
     skipped: bool = False        # 是否被过滤
     skip_reason: str = ""        # 跳过原因
+    structured_data: Optional[Dict] = None  # 结构化数据 (v5.0)
+
+
+# 增强型结构化 Prompt (Research V5.0)
+VLM_PROMPT_STRUCTURED = """分析此图片内容，必须按以下 JSON 格式输出：
+
+```json
+{
+  "type": "table|chart|figure|text",
+  "title": "标题（如果有）",
+  "data": {
+    "headers": ["列1", "列2", ...],
+    "rows": [["值1", "值2", ...], ...]
+  },
+  "key_insights": ["关键发现1", "关键发现2", ...],
+  "description": "详细描述（100-200字）"
+}
+```
+
+规则：
+- 表格：完整提取行列数据到 data。
+- 图表：提取关键趋势数据。
+- 示意图：用 key_insights 描述结构。
+- 纯文字：type 设为 "text"。"""
 
 
 VLM_PROMPT = """你是一个专业的研报/论文分析助手。请描述这张图片的内容。
@@ -76,10 +102,12 @@ class VLMDescriber:
         self.timeout = timeout
         self.max_concurrent = max_concurrent
 
-        # 过滤参数
-        self.min_area = 10000        # 最小面积（100x100 像素）
-        self.min_aspect_ratio = 0.1  # 最小宽高比
-        self.max_aspect_ratio = 10   # 最大宽高比
+        self.max_concurrent = max_concurrent
+
+        # 过滤与评分参数 (优化 v5.0)
+        self.min_area = 10000        # 最小面积
+        self.min_aspect_ratio = 0.05  # 放宽比例限制以支持超宽图
+        self.max_aspect_ratio = 20
 
     def should_process(self, image: 'ExtractedImage') -> tuple[bool, str]:
         """
@@ -105,22 +133,30 @@ class VLMDescriber:
 
         return True, "有效图片"
 
-    def _parse_response(self, text: str) -> tuple[str, str, float]:
+    def _parse_response(self, text: str) -> tuple[str, str, float, Optional[Dict]]:
         """
-        解析 VLM 响应
-
-        Args:
-            text: VLM 返回的文本
-
-        Returns:
-            (image_type, description, confidence)
+        解析 VLM 响应 (支持 JSON 和 文本)
         """
-        # 默认值
         image_type = "other"
         description = text
         confidence = 0.7
+        structured_data = None
 
-        # 尝试解析类型
+        # 优先尝试 JSON 提取
+        try:
+            # 找 JSON 代码块
+            json_match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group(1))
+                structured_data = data
+                image_type = data.get("type", "other")
+                description = data.get("description", text)
+                confidence = 0.95
+                return image_type, description, confidence, structured_data
+        except:
+            pass
+
+        # 回退到正则解析 (Legacy)
         type_match = re.search(r"类型[：:]\s*(\w+)", text)
         if type_match:
             parsed_type = type_match.group(1).lower()
@@ -128,12 +164,11 @@ class VLMDescriber:
                 image_type = parsed_type
                 confidence = 0.9
 
-        # 尝试解析描述
         desc_match = re.search(r"描述[：:]\s*(.+)", text, re.DOTALL)
         if desc_match:
             description = desc_match.group(1).strip()
 
-        return image_type, description, confidence
+        return image_type, description, confidence, structured_data
 
     async def describe(
         self,
@@ -159,6 +194,9 @@ class VLMDescriber:
             # Base64 编码
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
+            # 选择 Prompt
+            prompt = VLM_PROMPT_STRUCTURED if getattr(self, 'use_structured', True) else VLM_PROMPT
+            
             # 构建消息
             content = [
                 {
@@ -169,7 +207,7 @@ class VLMDescriber:
                 },
                 {
                     "type": "text",
-                    "text": VLM_PROMPT
+                    "text": prompt
                 }
             ]
 
@@ -178,20 +216,25 @@ class VLMDescriber:
                 self.client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": content}],
-                    max_tokens=500
+                    max_tokens=1000 if getattr(self, 'use_structured', True) else 500
                 ),
                 timeout=self.timeout
             )
 
             # 解析响应
             text = response.choices[0].message.content
-            image_type, description, confidence = self._parse_response(text)
+            image_type, description, confidence, structured_data = self._parse_response(text)
+
+            # 如果有结构化数据，可以根据需要拼接到描述中
+            if structured_data and image_type in ["table", "chart"]:
+                description = self._format_structured_data(structured_data)
 
             return ImageDescription(
                 page=page,
                 description=description,
                 image_type=image_type,
-                confidence=confidence
+                confidence=confidence,
+                structured_data=structured_data
             )
 
         except asyncio.TimeoutError:
@@ -212,6 +255,30 @@ class VLMDescriber:
                 skipped=True,
                 skip_reason=f"API 错误: {str(e)[:50]}"
             )
+
+    def _format_structured_data(self, data: Dict) -> str:
+        """将结构化 JSON 转换为 Markdown 表格/描述"""
+        description = data.get("description", "")
+        
+        # 尝试构建表格
+        table_data = data.get("data", {})
+        headers = table_data.get("headers", [])
+        rows = table_data.get("rows", [])
+        
+        if headers and rows:
+            table_md = "\n\n| " + " | ".join(headers) + " |\n"
+            table_md += "| " + " | ".join(["---"] * len(headers)) + " |\n"
+            for row in rows:
+                table_md += "| " + " | ".join([str(v) for v in row]) + " |\n"
+            description = f"{description}\n{table_md}"
+            
+        # 关键洞察
+        insights = data.get("key_insights", [])
+        if insights:
+            insights_md = "\n\n**关键发现:**\n- " + "\n- ".join(insights)
+            description = f"{description}{insights_md}"
+            
+        return description
 
     def _compress_image(self, image_bytes: bytes, max_size: int = 512000) -> bytes:
         """

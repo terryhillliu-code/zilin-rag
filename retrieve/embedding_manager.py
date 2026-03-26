@@ -102,11 +102,12 @@ class EmbeddingManager:
         try:
             print(f"[EmbeddingManager] 加载模型: {self.model_name} (device={self.device})", file=sys.stderr)
             start = time.time()
-            
+
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(
                 self.model_name,
-                device=self.device
+                device=self.device,
+                local_files_only=True  # 使用本地缓存，避免网络请求
             )
             
             elapsed = time.time() - start
