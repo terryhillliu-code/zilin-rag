@@ -47,3 +47,6 @@ Thumbs.db
 # MinerU
 mineru-venv/
 mineru_output/
+
+# Runtime databases
+*.db
