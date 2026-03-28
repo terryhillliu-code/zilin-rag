@@ -204,10 +204,14 @@ class Reranker:
         start = time.time()
         
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
-        
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name,
+            local_files_only=True  # 使用本地缓存，避免网络请求
+        )
         self._model = AutoModelForSequenceClassification.from_pretrained(
-            self.model_name
+            self.model_name,
+            local_files_only=True  # 使用本地缓存，避免网络请求
         )
         
         # 移动到指定设备
