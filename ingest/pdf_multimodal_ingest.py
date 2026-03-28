@@ -155,8 +155,12 @@ async def ingest_pdf_multimodal(
             id=f"{pdf_path}#text_{i}",
             text=f"[{filename} 第{chunk.page + 1}页]\n{chunk.text}",
             raw_text=chunk.text,
-            source=pdf_path,
+            source=str(pdf_path),
             filename=filename,
+            h1="",
+            h2="",
+            category="PDF",
+            tags="",
             char_count=chunk.char_count,
             chunk_type="text",
             page=chunk.page
@@ -169,8 +173,11 @@ async def ingest_pdf_multimodal(
             id=f"{pdf_path}#figure_{i}",
             text=f"[{filename} 第{desc.page + 1}页 图表]\n{desc.description}",
             raw_text=desc.description,
-            source=pdf_path,
+            source=str(pdf_path),
             filename=filename,
+            h1="",
+            h2="",
+            category="PDF_Figure",
             tags=f"figure,{desc.image_type}",
             char_count=len(desc.description),
             chunk_type="figure",
@@ -178,7 +185,7 @@ async def ingest_pdf_multimodal(
             figure_path=desc.structured_data.get("title", f"fig_{i}") if desc.structured_data else f"fig_{i}"
         )
         if desc.structured_data:
-            doc.metadata["structured_vlm"] = desc.structured_data
+            doc.metadata = {"structured_vlm": desc.structured_data}
         documents.append(doc)
 
     # 4. 向量化并入库
