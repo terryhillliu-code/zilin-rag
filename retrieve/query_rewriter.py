@@ -1,26 +1,34 @@
 """
-Query 重写器 (v5.2)
+Query 重写器 (v5.3)
 - 使用 LLM 将用户原始口语转化为更适合 RAG 检索的语义查询
 - 支持 HyDE (Hypothetical Document Embeddings) 模式
+- v5.3: 使用 zhiwei-common LLM 客户端替代 HTTP 调用
 """
-import json
-import requests
+import sys
+from pathlib import Path
 from typing import List, Optional
+
+# 添加 zhiwei-common 路径
+sys.path.insert(0, str(Path.home() / "zhiwei-common"))
+
+from zhiwei_common.secrets import load_secrets
+from zhiwei_common.llm import llm_client
+
+# 加载密钥
+load_secrets(silent=True)
+
 
 class QueryRewriter:
     """Query 重写器"""
 
-    def __init__(self, api_url: str = "http://127.0.0.1:8765/chat"):
-        self.api_url = api_url
-
     def rewrite(self, query: str, mode: str = "balanced") -> List[str]:
         """
         重写查询
-        
+
         Args:
             query: 原始查询
             mode: "precise" (1个精准) | "broad" (3个多维) | "hyde" (1个虚构答案)
-        
+
         Returns:
             重写后的查询列表
         """
@@ -33,35 +41,32 @@ class QueryRewriter:
             prompt = f"请将以下用户口语化的查询转换为一个更适合在学术论文库中检索的精准术语。直接返回结果，不要解释。查询：{query}"
 
         try:
-            resp = requests.post(
-                self.api_url,
-                json={
-                    "message": prompt,
-                    "model": "qwen3.5-plus",
-                    "temperature": 0.3
-                },
+            # 使用 zhiwei-common LLM 客户端
+            success, result = llm_client.call(
+                role="format",  # 使用 format 角色，适合简洁输出
+                message=prompt,
                 timeout=30
             )
-            
-            if resp.status_code == 200:
-                result = resp.json().get("response", query)
-                
+
+            if success and result:
                 # 尝试解析 JSON 列表
                 if mode == "broad":
                     try:
-                        # 找 JSON 块
+                        import json
                         import re
+                        # 找 JSON 块
                         json_match = re.search(r"(\[.*\])", result, re.DOTALL)
                         if json_match:
                             return json.loads(json_match.group(1))
                     except:
                         return [result]
-                
+
                 return [result]
         except Exception as e:
             print(f"[Rewriter] 错误: {e}")
-            
+
         return [query]
+
 
 # 快捷调用
 def rewrite_query(query: str, mode: str = "precise") -> List[str]:
