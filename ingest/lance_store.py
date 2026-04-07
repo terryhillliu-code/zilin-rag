@@ -235,19 +235,20 @@ class LanceStore:
         top_k: int = 10,
         filter_sql: Optional[str] = None
     ) -> list[dict]:
-        """文本检索（优先常驻服务，降级本地）"""
-        # 先尝试常驻 Embedding 服务
+        """文本检索（优先本地 embedding_manager，避免 HTTP 死锁）"""
+        # ⭐ v69.0: 当 embedding_manager 可用时，直接使用，避免 HTTP 调用导致死锁
+        if self.embedding_manager is not None:
+            query_vector = self.embedding_manager.encode_single(query_text)
+            return self.search(query_vector, top_k, filter_sql)
+
+        # 降级：尝试常驻 Embedding 服务
         embeddings = call_embed_service([query_text])
-        
+
         if embeddings is not None and len(embeddings) > 0:
             query_vector = np.array(embeddings[0])
         else:
-            # 降级到本地
-            print(f"[LanceStore] 降级到本地 Embedding", file=sys.stderr)
-            if self.embedding_manager is None:
-                raise ValueError("需要 embedding_manager 才能进行文本检索")
-            query_vector = self.embedding_manager.encode_single(query_text)
-        
+            raise ValueError("需要 embedding_manager 才能进行文本检索")
+
         return self.search(query_vector, top_k, filter_sql)
     
     def count(self) -> int:
