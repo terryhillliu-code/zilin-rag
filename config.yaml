@@ -83,10 +83,7 @@ multimodal:
   # VLM 配置
   vlm:
     enabled: true
-    prefer_local: true  # 优先本地模型
-    local_model: qwen2-vl-2b  # qwen2-vl-7b / qwen2-vl-2b / minicpm-v
-    cloud_model: qwen-vl-plus  # 云端降级模型
-    device: auto       # auto / cuda / mps / cpu
+    cloud_model: qwen3-vl-flash  # 云端视觉模型（性价比最优）
     max_tokens: 1024
 
   # 图片处理

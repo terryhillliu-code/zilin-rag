@@ -255,15 +255,57 @@ def reconcile(dry_run=False, limit=0, skip_chroma=False):
         except Exception as e: print(f"  ❌ Lance 清理异常: {e}")
             
     print(f"\n✅ 同步对齐完成! Lance(+{lance_success}), Chroma(+{chroma_success}), 清理({len(stale_lance)})")
+    return lance_success, chroma_success, len(stale_lance)
+
+def callback_update_rag_indexed():
+    """同步回调：更新 Paper Analyzer 的 rag_indexed 字段"""
+    print("\n" + "=" * 50)
+    print("🔄 执行回调：更新 rag_indexed 字段...")
+    print("=" * 50)
+
+    update_script = Path.home() / "arxiv-paper-analyzer" / "backend" / "scripts" / "update_rag_indexed.py"
+    paper_analyzer_venv = Path.home() / "arxiv-paper-analyzer" / "backend" / "venv" / "bin" / "python3"
+
+    if not update_script.exists():
+        print(f"⚠️ 回调脚本不存在: {update_script}")
+        return False
+
+    try:
+        # 使用 Paper Analyzer 的 venv 执行
+        result = subprocess.run(
+            [str(paper_analyzer_venv), str(update_script)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            print("✅ rag_indexed 更新完成")
+            print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+            return True
+        else:
+            print(f"❌ rag_indexed 更新失败: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"❌ 回调执行异常: {e}")
+        return False
 
 def main():
     parser = argparse.ArgumentParser(description="VaultSyncMaster - 统一同步工具")
     parser.add_argument("--dry-run", action="store_true", help="只检查不执行")
     parser.add_argument("--limit", type=int, default=0, help="处理任务数量上限 (0 为不限制)")
     parser.add_argument("--skip-chroma", action="store_true", help="跳过 ChromaDB 检查 (用于处理容器故障)")
+    parser.add_argument("--callback", action="store_true", help="同步完成后执行回调（更新 rag_indexed）")
     args = parser.parse_args()
-    
-    reconcile(dry_run=args.dry_run, limit=args.limit, skip_chroma=args.skip_chroma)
+
+    lance_success, chroma_success, stale_count = reconcile(
+        dry_run=args.dry_run,
+        limit=args.limit,
+        skip_chroma=args.skip_chroma
+    )
+
+    # 执行回调
+    if args.callback and not args.dry_run and lance_success > 0:
+        callback_update_rag_indexed()
 
 if __name__ == "__main__":
     main()

@@ -140,6 +140,52 @@ def web_search(query: str, count: int = 5) -> str:
     return json.dumps({"error": "所有搜索方案失败", "attempted": ["zhipu", "github", "tongyi", "perplexity"]}, ensure_ascii=False, indent=2)
 
 
+# ============================================================================
+# WebSearch 别名 - 覆盖内置工具
+# ============================================================================
+
+@mcp.tool()
+def WebSearch(query: str) -> str:
+    """
+    网络搜索工具（覆盖 Claude Code 内置 WebSearch）
+
+    使用智谱 GLM web_search 实现，免费且无需 haiku 模型。
+
+    Args:
+        query: 搜索关键词
+
+    Returns:
+        搜索结果，包含 URL 列表和摘要
+    """
+    # 调用内部实现
+    result = web_search(query, count=5)
+
+    # 解析并格式化为 Sources 格式
+    import json
+    try:
+        data = json.loads(result)
+        if "error" in data:
+            return f"搜索失败: {data['error']}"
+
+        # 格式化为用户友好的输出
+        output = f"搜索: {query}\n\n"
+        output += f"方法: {data.get('method', 'unknown')}\n\n"
+
+        results = data.get("results", [])
+        if results:
+            output += "结果:\n"
+            for r in results:
+                output += f"- [{r.get('title', '链接')}]({r.get('url', '')})\n"
+
+        answer = data.get("answer", "")
+        if answer:
+            output += f"\n摘要:\n{answer[:500]}..."
+
+        return output
+    except:
+        return result
+
+
 def _search_zhipu(query: str, count: int, api_key: str) -> dict:
     """智谱 GLM web_search（首选，免费）
 
