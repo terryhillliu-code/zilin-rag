@@ -153,7 +153,7 @@ def _search_zhipu(query: str, count: int, api_key: str) -> dict:
     url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
     data = {
         "model": "glm-4.5",
-        "messages": [{"role": "user", "content": query}],
+        "messages": [{"role": "user", "content": f"搜索: {query}。请列出相关链接。"}],
         "tools": [{"type": "web_search", "web_search": {"search_result": True}}],
         "stream": False
     }
