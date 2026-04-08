@@ -79,10 +79,11 @@ def web_search(query: str, count: int = 5) -> str:
     """
     网络搜索（替代 Claude Code 内置 WebSearch）
 
-    自动选择最佳搜索方案（优先免费/低价）：
-    1. GitHub 搜索（免费，适合技术仓库）
-    2. 阿里通义深度研究（$0.0004/次，中文友好）
-    3. Perplexity sonar（$0.005/次，备用）
+    优先级（智谱优先）：
+    1. 智谱 GLM web_search（免费，首选）
+    2. GitHub 搜索（免费，适合技术仓库）
+    3. 阿里通义深度研究（$0.0004/次，备用）
+    4. Perplexity sonar（$0.005/次，备用）
 
     Args:
         query: 搜索关键词
@@ -97,35 +98,111 @@ def web_search(query: str, count: int = 5) -> str:
     import re
 
     # 获取配置
+    zhipu_key = ""
     gh_token = ""
     api_key = ""
     env_path = Path.home() / ".secrets" / "global.env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
+            if line.startswith("ZHIPU_API_KEY="):
+                zhipu_key = line.split("=")[1].strip()
             if line.startswith("GH_TOKEN="):
                 gh_token = line.split("=")[1].strip()
             if line.startswith("OPENROUTER_API_KEY="):
                 api_key = line.split("=")[1].strip()
 
-    # 方案 1: GitHub 搜索（免费，适合技术内容）
+    # 优先级 1: 智谱 GLM web_search（免费，首选）
+    if zhipu_key:
+        result = _search_zhipu(query, count, zhipu_key)
+        if "error" not in result:
+            return json.dumps(result, ensure_ascii=False, indent=2)
+
+    # 优先级 2: GitHub 搜索（免费，适合技术内容）
     if gh_token and _is_technical_query(query):
         result = _search_github(query, count, gh_token)
         if "error" not in result:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
-    # 方案 2: 阿里通义深度研究（$0.0004/次，最便宜）
+    # 优先级 3: 阿里通义深度研究（备用）
     if api_key:
         result = _search_tongyi_deep(query, count, api_key)
         if "error" not in result:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
-    # 方案 3: Perplexity 备用
+    # 优先级 4: Perplexity 备用
     if api_key:
         result = _search_perplexity(query, count, api_key)
         if "error" not in result:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
     return json.dumps({"error": "无可用搜索方案"}, ensure_ascii=False, indent=2)
+
+
+def _search_zhipu(query: str, count: int, api_key: str) -> dict:
+    """智谱 GLM web_search（首选，免费）
+
+    使用 subprocess + curl 调用，避免 urllib 超时问题。
+    """
+    import subprocess
+    import re
+
+    url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    data = {
+        "model": "glm-4.5",
+        "messages": [{"role": "user", "content": query}],
+        "tools": [{"type": "web_search", "web_search": {"search_result": True}}],
+        "stream": False
+    }
+
+    try:
+        # 使用 curl 调用 API（更可靠）
+        result = subprocess.run(
+            [
+                "curl", "-s", "-m", "60",
+                "-H", "Content-Type: application/json",
+                "-H", f"Authorization: Bearer {api_key}",
+                "-d", json.dumps(data),
+                url
+            ],
+            capture_output=True,
+            text=True,
+            timeout=70
+        )
+
+        if result.returncode != 0:
+            return {"error": f"curl 失败: {result.stderr}"}
+
+        response = json.loads(result.stdout)
+        message = response["choices"][0]["message"]
+        content = message.get("content", "")
+        reasoning = message.get("reasoning_content", "")
+
+        # 提取 URL 作为参考来源
+        urls = re.findall(r'https?://[^\s\)\]\>\"]+', content)
+
+        results = []
+        for i, url_item in enumerate(urls[:count]):
+            results.append({
+                "rank": i + 1,
+                "url": url_item,
+                "source": "zhipu-glm-web_search"
+            })
+
+        return {
+            "query": query,
+            "method": "zhipu-glm-4.5-web_search (免费)",
+            "count": len(results),
+            "results": results,
+            "answer": content[:1000],
+            "reasoning": reasoning[:300] if reasoning else None,
+            "model": response.get("model", "glm-4.5"),
+            "usage": response.get("usage", {})
+        }
+
+    except subprocess.TimeoutExpired:
+        return {"error": "智谱搜索超时（60秒）"}
+    except Exception as e:
+        return {"error": f"智谱搜索失败: {str(e)}"}
 
 
 def _is_technical_query(query: str) -> bool:
