@@ -1,16 +1,21 @@
 """
 知微 MCP Server
-提供 RAG 检索和系统状态查询工具
+提供 RAG 检索、网络搜索和系统状态查询工具
 
 使用 FastMCP 实现 (官方 Python SDK)
 参考：https://github.com/modelcontextprotocol/python-sdk
 
-工具列表 (5个):
-- search_knowledge: 三轨检索
+工具列表 (6个):
+- search_knowledge: 三轨检索（本地知识库）
+- web_search: 网络搜索（Brave Search API，需配置 key）
 - get_system_health: 系统+Docker状态
 - get_recent_changes: CHANGELOG变更
 - get_task_queue: 开发任务队列
 - get_vectorize_status: 向量化进度
+
+配置 Brave Search API:
+    1. 访问 https://brave.com/search/api/ 获取 API key（免费额度 2000 次/月）
+    2. 在 ~/.secrets/global.env 中添加: BRAVE_SEARCH_API_KEY=xxx
 """
 
 import subprocess
@@ -62,6 +67,87 @@ def search_knowledge(query: str, top_k: int = 5) -> str:
             "query": query,
             "count": len(formatted),
             "results": formatted
+        }, ensure_ascii=False, indent=2)
+
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def web_search(query: str, count: int = 5) -> str:
+    """
+    网络搜索（替代 Claude Code 内置 WebSearch）
+
+    使用 Brave Search API，需先配置 API key。
+
+    Args:
+        query: 搜索关键词
+        count: 返回结果数量，默认 5
+
+    Returns:
+        JSON 格式的搜索结果，包含标题、URL、摘要
+    """
+    import os
+    import urllib.request
+    import urllib.parse
+
+    # 从环境变量读取 API key
+    api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+
+    if not api_key:
+        # 尝试从 global.env 读取
+        env_path = Path.home() / ".secrets" / "global.env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith("BRAVE_SEARCH_API_KEY="):
+                    api_key = line.split("=")[1].strip()
+                    break
+
+    if not api_key:
+        return json.dumps({
+            "error": "未配置 BRAVE_SEARCH_API_KEY",
+            "hint": "访问 https://brave.com/search/api/ 获取免费 API key（2000次/月）",
+            "config": "在 ~/.secrets/global.env 添加: BRAVE_SEARCH_API_KEY=xxx"
+        }, ensure_ascii=False, indent=2)
+
+    try:
+        # Brave Search API
+        url = f"https://api.search.brave.com/res/v1/web/search"
+        params = {
+            "q": query,
+            "count": count,
+            "search_lang": "zh-hans"
+        }
+
+        headers = {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": api_key
+        }
+
+        # 构建完整 URL
+        full_url = url + "?" + urllib.parse.urlencode(params)
+
+        # 发送请求
+        req = urllib.request.Request(full_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+
+        # 解析结果
+        results = []
+        web_results = data.get("web", {}).get("results", [])
+
+        for item in web_results[:count]:
+            results.append({
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "description": item.get("description", "")[:200]
+            })
+
+        return json.dumps({
+            "query": query,
+            "count": len(results),
+            "results": results
         }, ensure_ascii=False, indent=2)
 
     except Exception as e:
