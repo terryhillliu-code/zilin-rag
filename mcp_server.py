@@ -7,15 +7,16 @@
 
 工具列表 (6个):
 - search_knowledge: 三轨检索（本地知识库）
-- web_search: 网络搜索（Brave Search API，需配置 key）
+- web_search: 网络搜索（OpenRouter Perplexity，已有 key）
 - get_system_health: 系统+Docker状态
 - get_recent_changes: CHANGELOG变更
 - get_task_queue: 开发任务队列
 - get_vectorize_status: 向量化进度
 
-配置 Brave Search API:
-    1. 访问 https://brave.com/search/api/ 获取 API key（免费额度 2000 次/月）
-    2. 在 ~/.secrets/global.env 中添加: BRAVE_SEARCH_API_KEY=xxx
+网络搜索说明:
+- 使用 OpenRouter 的 Perplexity sonar 模型
+- 自动读取 ~/.secrets/openrouter_api_key.txt
+- 无需额外配置 API key
 """
 
 import subprocess
@@ -78,7 +79,7 @@ def web_search(query: str, count: int = 5) -> str:
     """
     网络搜索（替代 Claude Code 内置 WebSearch）
 
-    使用 Brave Search API，需先配置 API key。
+    使用 OpenRouter Perplexity 搜索模型，无需额外配置 API key。
 
     Args:
         query: 搜索关键词
@@ -91,63 +92,90 @@ def web_search(query: str, count: int = 5) -> str:
     import urllib.request
     import urllib.parse
 
-    # 从环境变量读取 API key
-    api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+    # 从配置文件读取 OpenRouter API key
+    api_key = ""
 
+    # 优先读取 global.env
+    env_path = Path.home() / ".secrets" / "global.env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.startswith("OPENROUTER_API_KEY="):
+                api_key = line.split("=")[1].strip()
+                break
+
+    # 备用：读取独立 key 文件
     if not api_key:
-        # 尝试从 global.env 读取
-        env_path = Path.home() / ".secrets" / "global.env"
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                if line.startswith("BRAVE_SEARCH_API_KEY="):
-                    api_key = line.split("=")[1].strip()
-                    break
+        key_path = Path.home() / ".secrets" / "openrouter_api_key.txt"
+        if key_path.exists():
+            api_key = key_path.read_text().strip()
+
+    # 备用：环境变量
+    if not api_key:
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
 
     if not api_key:
         return json.dumps({
-            "error": "未配置 BRAVE_SEARCH_API_KEY",
-            "hint": "访问 https://brave.com/search/api/ 获取免费 API key（2000次/月）",
-            "config": "在 ~/.secrets/global.env 添加: BRAVE_SEARCH_API_KEY=xxx"
+            "error": "未配置 OPENROUTER_API_KEY",
+            "hint": "OpenRouter API key 文件不存在: ~/.secrets/openrouter_api_key.txt"
         }, ensure_ascii=False, indent=2)
 
     try:
-        # Brave Search API
-        url = f"https://api.search.brave.com/res/v1/web/search"
-        params = {
-            "q": query,
-            "count": count,
-            "search_lang": "zh-hans"
-        }
+        # 使用 OpenRouter Perplexity 搜索模型
+        url = "https://openrouter.ai/api/v1/chat/completions"
 
         headers = {
-            "Accept": "application/json",
-            "Accept-Encoding": "gzip",
-            "X-Subscription-Token": api_key
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "https://github.com/zhiwei-bot",
+            "X-Title": "Zhiwei Web Search"
         }
 
-        # 构建完整 URL
-        full_url = url + "?" + urllib.parse.urlencode(params)
+        data = {
+            "model": "perplexity/sonar",  # 轻量搜索模型
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"搜索: {query}\n\n请列出 {count} 个最相关的搜索结果，每个结果包含标题、URL 和简短摘要。格式为 JSON 列表。"
+                }
+            ],
+            "max_tokens": 1000
+        }
 
-        # 发送请求
-        req = urllib.request.Request(full_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode(),
+            headers=headers,
+            method="POST"
+        )
 
-        # 解析结果
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            response = json.loads(resp.read().decode())
+
+        # 解析 Perplexity 响应
+        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        # 尝试提取 JSON 格式的结果
+        # Perplexity 返回的是文本，可能包含 JSON 或 markdown 格式的链接
+        import re
+
+        # 提取 URL
+        urls = re.findall(r'https?://[^\s\)\]\>]+', content)
+
         results = []
-        web_results = data.get("web", {}).get("results", [])
-
-        for item in web_results[:count]:
+        for i, url in enumerate(urls[:count]):
+            # 尝试提取标题（URL 前面的文字）
             results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "description": item.get("description", "")[:200]
+                "rank": i + 1,
+                "url": url,
+                "content": content[:500]
             })
 
         return json.dumps({
             "query": query,
+            "model": "perplexity/sonar",
             "count": len(results),
-            "results": results
+            "results": results,
+            "full_response": content[:1000]
         }, ensure_ascii=False, indent=2)
 
     except Exception as e:
