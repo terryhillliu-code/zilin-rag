@@ -79,7 +79,9 @@ def web_search(query: str, count: int = 5) -> str:
     """
     网络搜索（替代 Claude Code 内置 WebSearch）
 
-    使用 OpenRouter Perplexity 搜索模型，无需额外配置 API key。
+    自动选择最佳搜索方案：
+    1. OpenRouter Perplexity（需要 API key，约 $0.005/次）
+    2. 本机 HTML 抓取（完全免费，无需 API）
 
     Args:
         query: 搜索关键词
@@ -92,10 +94,8 @@ def web_search(query: str, count: int = 5) -> str:
     import urllib.request
     import urllib.parse
 
-    # 从配置文件读取 OpenRouter API key
+    # 方案 1: 尝试 OpenRouter Perplexity（需 API key）
     api_key = ""
-
-    # 优先读取 global.env
     env_path = Path.home() / ".secrets" / "global.env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
@@ -103,83 +103,104 @@ def web_search(query: str, count: int = 5) -> str:
                 api_key = line.split("=")[1].strip()
                 break
 
-    # 备用：读取独立 key 文件
-    if not api_key:
-        key_path = Path.home() / ".secrets" / "openrouter_api_key.txt"
-        if key_path.exists():
-            api_key = key_path.read_text().strip()
+    if api_key:
+        result = _search_perplexity(query, count, api_key)
+        if "error" not in result:
+            return json.dumps(result, ensure_ascii=False, indent=2)
 
-    # 备用：环境变量
-    if not api_key:
-        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    # 方案 2: 本机 HTML 抓取（完全免费）
+    result = _search_html(query, count)
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
-    if not api_key:
-        return json.dumps({
-            "error": "未配置 OPENROUTER_API_KEY",
-            "hint": "OpenRouter API key 文件不存在: ~/.secrets/openrouter_api_key.txt"
-        }, ensure_ascii=False, indent=2)
 
+def _search_perplexity(query: str, count: int, api_key: str) -> dict:
+    """使用 OpenRouter Perplexity 搜索"""
     try:
-        # 使用 OpenRouter Perplexity 搜索模型
         url = "https://openrouter.ai/api/v1/chat/completions"
-
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
-            "HTTP-Referer": "https://github.com/zhiwei-bot",
-            "X-Title": "Zhiwei Web Search"
+            "HTTP-Referer": "https://github.com/zhiwei-bot"
         }
-
         data = {
-            "model": "perplexity/sonar",  # 轻量搜索模型
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"搜索: {query}\n\n请列出 {count} 个最相关的搜索结果，每个结果包含标题、URL 和简短摘要。格式为 JSON 列表。"
-                }
-            ],
-            "max_tokens": 1000
+            "model": "perplexity/sonar",
+            "messages": [{"role": "user", "content": f"搜索: {query}\n列出 {count} 个相关结果，包含标题和URL。"}],
+            "max_tokens": 500
         }
 
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(data).encode(),
-            headers=headers,
-            method="POST"
-        )
-
+        req = urllib.request.Request(url, json.dumps(data).encode(), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=30) as resp:
             response = json.loads(resp.read().decode())
 
-        # 解析 Perplexity 响应
-        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-        # 尝试提取 JSON 格式的结果
-        # Perplexity 返回的是文本，可能包含 JSON 或 markdown 格式的链接
-        import re
+        content = response["choices"][0]["message"]["content"]
 
         # 提取 URL
-        urls = re.findall(r'https?://[^\s\)\]\>]+', content)
+        import re
+        urls = re.findall(r'https?://[^\s\)\]\>\"]+', content)
 
         results = []
         for i, url in enumerate(urls[:count]):
-            # 尝试提取标题（URL 前面的文字）
+            # 提取标题（URL 前的文字）
+            title_match = re.search(rf'([^\n]+)\s*{re.escape(url)}', content)
+            title = title_match.group(1).strip() if title_match else f"结果 {i+1}"
             results.append({
                 "rank": i + 1,
+                "title": title[:80],
                 "url": url,
-                "content": content[:500]
+                "source": "perplexity"
             })
 
-        return json.dumps({
+        return {
             "query": query,
-            "model": "perplexity/sonar",
+            "method": "perplexity/sonar",
             "count": len(results),
             "results": results,
-            "full_response": content[:1000]
-        }, ensure_ascii=False, indent=2)
+            "cost_usd": response.get("usage", {}).get("cost", 0)
+        }
 
     except Exception as e:
-        return json.dumps({"error": str(e)}, ensure_ascii=False)
+        return {"error": f"Perplexity 搜索失败: {str(e)}"}
+
+
+def _search_html(query: str, count: int) -> dict:
+    """本机 HTML 抓取（完全免费）"""
+    import urllib.request
+    import re
+
+    try:
+        # 使用 DuckDuckGo Lite（无 API key，纯 HTML）
+        url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(query)}"
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        # 提取搜索结果
+        # DuckDuckGo Lite 的结果格式：<a class="result__a" href="URL">标题</a>
+        links = re.findall(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>', html)
+
+        results = []
+        for i, (url, title) in enumerate(links[:count]):
+            results.append({
+                "rank": i + 1,
+                "title": title.strip(),
+                "url": url,
+                "source": "duckduckgo_lite"
+            })
+
+        if results:
+            return {
+                "query": query,
+                "method": "duckduckgo_lite (免费)",
+                "count": len(results),
+                "results": results
+            }
+        else:
+            return {"error": "未找到搜索结果，可能网络受限"}
+
+    except Exception as e:
+        return {"error": f"HTML 抓取失败: {str(e)}"}
 
 
 @mcp.tool()
