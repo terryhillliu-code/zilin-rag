@@ -104,6 +104,7 @@ def web_search(query: str, count: int = 5) -> str:
     env_path = Path.home() / ".secrets" / "global.env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
+            line = line.strip()
             if line.startswith("ZHIPU_API_KEY="):
                 zhipu_key = line.split("=")[1].strip()
             if line.startswith("GH_TOKEN="):
@@ -114,7 +115,8 @@ def web_search(query: str, count: int = 5) -> str:
     # 优先级 1: 智谱 GLM web_search（免费，首选）
     if zhipu_key:
         result = _search_zhipu(query, count, zhipu_key)
-        if "error" not in result:
+        # 只有成功且有结果才返回，否则继续 fallback
+        if "error" not in result and result.get("count", 0) > 0:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
     # 优先级 2: GitHub 搜索（免费，适合技术内容）
