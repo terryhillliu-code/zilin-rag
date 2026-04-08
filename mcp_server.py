@@ -112,32 +112,32 @@ def web_search(query: str, count: int = 5) -> str:
             if line.startswith("OPENROUTER_API_KEY="):
                 api_key = line.split("=")[1].strip()
 
-    # 优先级 1: 智谱 GLM web_search（免费，首选）
+    # 优先级 1: 智谱 GLM web_search（免费，首选，30秒超时）
     if zhipu_key:
         result = _search_zhipu(query, count, zhipu_key)
-        # 只有成功且有结果才返回，否则继续 fallback
+        # 成功且有结果才返回，否则继续 fallback
         if "error" not in result and result.get("count", 0) > 0:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
     # 优先级 2: GitHub 搜索（免费，适合技术内容）
     if gh_token and _is_technical_query(query):
         result = _search_github(query, count, gh_token)
-        if "error" not in result:
+        if "error" not in result and result.get("count", 0) > 0:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
     # 优先级 3: 阿里通义深度研究（备用）
     if api_key:
         result = _search_tongyi_deep(query, count, api_key)
-        if "error" not in result:
+        if "error" not in result and result.get("count", 0) > 0:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
     # 优先级 4: Perplexity 备用
     if api_key:
         result = _search_perplexity(query, count, api_key)
-        if "error" not in result:
+        if "error" not in result and result.get("count", 0) > 0:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
-    return json.dumps({"error": "无可用搜索方案"}, ensure_ascii=False, indent=2)
+    return json.dumps({"error": "所有搜索方案失败", "attempted": ["zhipu", "github", "tongyi", "perplexity"]}, ensure_ascii=False, indent=2)
 
 
 def _search_zhipu(query: str, count: int, api_key: str) -> dict:
@@ -147,7 +147,9 @@ def _search_zhipu(query: str, count: int, api_key: str) -> dict:
     """
     import subprocess
     import re
+    import time
 
+    start_time = time.time()
     url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
     data = {
         "model": "glm-4.5",
@@ -157,10 +159,10 @@ def _search_zhipu(query: str, count: int, api_key: str) -> dict:
     }
 
     try:
-        # 使用 curl 调用 API（更可靠）
+        # 使用 curl 调用 API，30秒超时以加快 fallback
         result = subprocess.run(
             [
-                "curl", "-s", "-m", "60",
+                "curl", "-s", "-m", "30",
                 "-H", "Content-Type: application/json",
                 "-H", f"Authorization: Bearer {api_key}",
                 "-d", json.dumps(data),
@@ -168,13 +170,20 @@ def _search_zhipu(query: str, count: int, api_key: str) -> dict:
             ],
             capture_output=True,
             text=True,
-            timeout=70
+            timeout=35
         )
 
+        elapsed = time.time() - start_time
+
         if result.returncode != 0:
-            return {"error": f"curl 失败: {result.stderr}"}
+            return {"error": f"curl 失败 (耗时{elapsed:.1f}s): {result.stderr[:100]}"}
 
         response = json.loads(result.stdout)
+
+        # 检查 API 返回是否有错误
+        if "error" in response:
+            return {"error": f"智谱 API 错误: {response['error']}"}
+
         message = response["choices"][0]["message"]
         content = message.get("content", "")
         reasoning = message.get("reasoning_content", "")
@@ -198,13 +207,18 @@ def _search_zhipu(query: str, count: int, api_key: str) -> dict:
             "answer": content[:1000],
             "reasoning": reasoning[:300] if reasoning else None,
             "model": response.get("model", "glm-4.5"),
-            "usage": response.get("usage", {})
+            "usage": response.get("usage", {}),
+            "elapsed_seconds": round(elapsed, 1)
         }
 
     except subprocess.TimeoutExpired:
-        return {"error": "智谱搜索超时（60秒）"}
+        elapsed = time.time() - start_time
+        return {"error": f"智谱搜索超时 (耗时{elapsed:.1f}s，自动fallback)"}
+    except json.JSONDecodeError as e:
+        return {"error": f"JSON 解析失败: {str(e)[:50]}"}
     except Exception as e:
-        return {"error": f"智谱搜索失败: {str(e)}"}
+        elapsed = time.time() - start_time
+        return {"error": f"智谱搜索失败 (耗时{elapsed:.1f}s): {str(e)[:50]}"}
 
 
 def _is_technical_query(query: str) -> bool:
