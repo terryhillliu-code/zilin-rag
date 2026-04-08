@@ -79,38 +79,139 @@ def web_search(query: str, count: int = 5) -> str:
     """
     网络搜索（替代 Claude Code 内置 WebSearch）
 
-    自动选择最佳搜索方案：
-    1. OpenRouter Perplexity（需要 API key，约 $0.005/次）
-    2. 本机 HTML 抓取（完全免费，无需 API）
+    自动选择最佳搜索方案（优先免费/低价）：
+    1. GitHub 搜索（免费，适合技术仓库）
+    2. 阿里通义深度研究（$0.0004/次，中文友好）
+    3. Perplexity sonar（$0.005/次，备用）
 
     Args:
         query: 搜索关键词
         count: 返回结果数量，默认 5
 
     Returns:
-        JSON 格式的搜索结果，包含标题、URL、摘要
+        JSON 格式的搜索结果
     """
     import os
     import urllib.request
     import urllib.parse
+    import re
 
-    # 方案 1: 尝试 OpenRouter Perplexity（需 API key）
+    # 获取配置
+    gh_token = ""
     api_key = ""
     env_path = Path.home() / ".secrets" / "global.env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
+            if line.startswith("GH_TOKEN="):
+                gh_token = line.split("=")[1].strip()
             if line.startswith("OPENROUTER_API_KEY="):
                 api_key = line.split("=")[1].strip()
-                break
 
+    # 方案 1: GitHub 搜索（免费，适合技术内容）
+    if gh_token and _is_technical_query(query):
+        result = _search_github(query, count, gh_token)
+        if "error" not in result:
+            return json.dumps(result, ensure_ascii=False, indent=2)
+
+    # 方案 2: 阿里通义深度研究（$0.0004/次，最便宜）
+    if api_key:
+        result = _search_tongyi_deep(query, count, api_key)
+        if "error" not in result:
+            return json.dumps(result, ensure_ascii=False, indent=2)
+
+    # 方案 3: Perplexity 备用
     if api_key:
         result = _search_perplexity(query, count, api_key)
         if "error" not in result:
             return json.dumps(result, ensure_ascii=False, indent=2)
 
-    # 方案 2: 本机 HTML 抓取（完全免费）
-    result = _search_html(query, count)
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    return json.dumps({"error": "无可用搜索方案"}, ensure_ascii=False, indent=2)
+
+
+def _is_technical_query(query: str) -> bool:
+    """判断是否是技术查询（适合 GitHub 搜索）"""
+    tech_keywords = ["github", "repo", "library", "package", "npm", "pip", "git", "code", "api", "sdk", "cli", "framework"]
+    return any(kw in query.lower() for kw in tech_keywords)
+
+
+def _search_tongyi_deep(query: str, count: int, api_key: str) -> dict:
+    """阿里通义深度研究（最便宜，$0.0004/次）"""
+    try:
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+        data = {
+            "model": "alibaba/tongyi-deepresearch-30b-a3b",
+            "messages": [{"role": "user", "content": f"搜索: {query}\n列出 {count} 个最相关的结果，包含标题和链接。"}]
+        }
+
+        req = urllib.request.Request(url, json.dumps(data).encode(), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            response = json.loads(resp.read().decode())
+
+        content = response["choices"][0]["message"]["content"]
+
+        # 提取 URL
+        urls = re.findall(r'https?://[^\s\)\]\>\"]+', content)
+
+        results = []
+        for i, url in enumerate(urls[:count]):
+            results.append({
+                "rank": i + 1,
+                "url": url,
+                "source": "tongyi-deepresearch"
+            })
+
+        return {
+            "query": query,
+            "method": "tongyi-deepresearch (阿里通义)",
+            "count": len(results),
+            "results": results,
+            "cost_usd": response.get("usage", {}).get("cost", 0),
+            "full_response": content[:500]
+        }
+
+    except Exception as e:
+        return {"error": f"通义搜索失败: {str(e)}"}
+
+
+def _search_github(query: str, count: int, token: str) -> dict:
+    """GitHub 仓库搜索（完全免费）"""
+    try:
+        url = f"https://api.github.com/search/repositories?q={urllib.parse.quote(query)}&per_page={count}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            response = json.loads(resp.read().decode())
+
+        results = []
+        for item in response.get("items", [])[:count]:
+            results.append({
+                "rank": len(results) + 1,
+                "title": item.get("full_name", ""),
+                "url": item.get("html_url", ""),
+                "description": (item.get("description") or "")[:100],
+                "stars": item.get("stargazers_count", 0),
+                "language": item.get("language", ""),
+                "source": "github"
+            })
+
+        return {
+            "query": query,
+            "method": "github (免费)",
+            "total_count": response.get("total_count", 0),
+            "count": len(results),
+            "results": results
+        }
+
+    except Exception as e:
+        return {"error": f"GitHub 搜索失败: {str(e)}"}
 
 
 def _search_perplexity(query: str, count: int, api_key: str) -> dict:
@@ -162,48 +263,6 @@ def _search_perplexity(query: str, count: int, api_key: str) -> dict:
         return {"error": f"Perplexity 搜索失败: {str(e)}"}
 
 
-def _search_html(query: str, count: int) -> dict:
-    """本机 HTML 抓取（完全免费）"""
-    import urllib.request
-    import re
-
-    try:
-        # 使用 DuckDuckGo Lite（无 API key，纯 HTML）
-        url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(query)}"
-        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
-
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
-
-        # 提取搜索结果
-        # DuckDuckGo Lite 的结果格式：<a class="result__a" href="URL">标题</a>
-        links = re.findall(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>', html)
-
-        results = []
-        for i, (url, title) in enumerate(links[:count]):
-            results.append({
-                "rank": i + 1,
-                "title": title.strip(),
-                "url": url,
-                "source": "duckduckgo_lite"
-            })
-
-        if results:
-            return {
-                "query": query,
-                "method": "duckduckgo_lite (免费)",
-                "count": len(results),
-                "results": results
-            }
-        else:
-            return {"error": "未找到搜索结果，可能网络受限"}
-
-    except Exception as e:
-        return {"error": f"HTML 抓取失败: {str(e)}"}
-
-
-@mcp.tool()
 @mcp.tool()
 def get_system_health() -> str:
     """获取知微系统健康状态，包括服务和 Docker 容器状态"""
