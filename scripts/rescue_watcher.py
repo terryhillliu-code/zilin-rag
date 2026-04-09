@@ -156,8 +156,10 @@ class MinerURescuer:
         # 查询向量库
         source = str(md_path)
         try:
+            # 转义单引号，防止 SQL 截断
+            safe_name = md_path.name.replace("'", "''")
             # 使用 search 检查是否存在
-            results = self.store.table.search("").where(f"source LIKE '%{md_path.name}%'").limit(1).to_list()
+            results = self.store.table.search("").where(f"source LIKE '%{safe_name}%'").limit(1).to_list()
             if results:
                 return "indexed"
         except Exception:

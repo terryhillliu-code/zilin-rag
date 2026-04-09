@@ -261,8 +261,10 @@ class LanceStore:
         """删除指定来源的文档（用于增量更新）"""
         if self.table is None:
             return
+        # 转义单引号，防止 SQL 截断（如 "You're" -> "You''re")
+        safe_source = source.replace("'", "''")
         with self._write_lock():
-            self.table.delete(f"source = '{source}'")
+            self.table.delete(f"source = '{safe_source}'")
     
     def clear(self):
         """清空所有数据"""
