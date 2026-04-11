@@ -268,9 +268,11 @@ class SearchInput(BaseModel):
     source_filter: str = ""
 
 class SearchResult(BaseModel):
-    content: str
+    text: str
+    raw_text: str
     source: str
     score: float
+    track: str
 
 class SearchOutput(BaseModel):
     results: list[SearchResult]
@@ -297,11 +299,14 @@ def get_search_retriever():
     return _search_retriever
 
 @app.post("/search", response_model=SearchOutput)
+@app.post("/retrieve", response_model=SearchOutput)
 async def search_endpoint(input: SearchInput):
     """
     检索服务
 
-    从知识库中检索相关内容
+    从知识库中检索相关内容，支持两个端点：
+    - /search: 简化检索
+    - /retrieve: 完整检索（兼容 bridge.py 格式）
     """
     _request_stats["total"] += 1
     _request_stats["search"] = _request_stats.get("search", 0) + 1
@@ -313,9 +318,11 @@ async def search_endpoint(input: SearchInput):
         return SearchOutput(
             results=[
                 SearchResult(
-                    content=r.text if hasattr(r, 'text') else str(r),
-                    source=r.source if hasattr(r, 'source') else "",
-                    score=r.score if hasattr(r, 'score') else 0.0
+                    text=getattr(r, 'text', str(r)),
+                    raw_text=getattr(r, 'raw_text', getattr(r, 'text', str(r))),
+                    source=getattr(r, 'source', ""),
+                    score=getattr(r, 'score', 0.0),
+                    track=getattr(r, 'track', "unknown")
                 )
                 for r in results
             ]
