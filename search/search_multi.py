@@ -151,7 +151,11 @@ def _make_result(provider: str, results: list[dict], elapsed: float) -> dict:
 
 def _search_exa(query: str, count: int, api_key: str) -> list[dict]:
     """Exa AI Semantic Search"""
-    import httpx
+    try:
+        import httpx
+    except ImportError:
+        logger.warning("httpx 未安装，跳过 Exa 搜索")
+        return []
 
     url = "https://api.exa.ai/search"
     headers = {
