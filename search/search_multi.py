@@ -36,24 +36,32 @@ DEFAULT_LIMITS = {
 # ============================================================================
 
 
+_KEYS_CACHE: dict = {}
+_KEYS_LOADED: bool = False
+
+
 def _load_keys() -> dict:
-    """从 global.env 加载 API keys"""
-    keys: dict = {}
+    """从 global.env 加载 API keys（带缓存）"""
+    global _KEYS_LOADED
+    if _KEYS_LOADED:
+        return _KEYS_CACHE
+
     env_path = Path.home() / ".secrets" / "global.env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
             line = line.strip()
             if line.startswith("TAVILY_API_KEY="):
-                keys["tavily"] = line.split("=", 1)[1].strip().strip('"')
+                _KEYS_CACHE["tavily"] = line.split("=", 1)[1].strip().strip('"')
             elif line.startswith("EXA_API_KEY="):
-                keys["exa"] = line.split("=", 1)[1].strip().strip('"')
+                _KEYS_CACHE["exa"] = line.split("=", 1)[1].strip().strip('"')
             elif line.startswith("SERPER_API_KEY="):
-                keys["serper"] = line.split("=", 1)[1].strip().strip('"')
+                _KEYS_CACHE["serper"] = line.split("=", 1)[1].strip().strip('"')
             elif line.startswith("BRAVE_API_KEY="):
-                keys["brave"] = line.split("=", 1)[1].strip().strip('"')
+                _KEYS_CACHE["brave"] = line.split("=", 1)[1].strip().strip('"')
             elif line.startswith("SEARXNG_URL="):
-                keys["searxng"] = line.split("=", 1)[1].strip().strip('"')
-    return keys
+                _KEYS_CACHE["searxng"] = line.split("=", 1)[1].strip().strip('"')
+    _KEYS_LOADED = True
+    return _KEYS_CACHE
 
 
 # ============================================================================
