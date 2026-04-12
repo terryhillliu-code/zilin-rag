@@ -5,21 +5,22 @@
 使用 FastMCP 实现 (官方 Python SDK)
 参考：https://github.com/modelcontextprotocol/python-sdk
 
-工具列表 (6个):
+工具列表 (7个):
 - search_knowledge: 三轨检索（本地知识库）
-- web_search: 网络搜索（OpenRouter Perplexity，已有 key）
+- web_search: 多后端聚合搜索（Exa → Tavily → DDGS）
+- WebSearch: web_search 的人类友好格式
+- web_search_status: API 用量查询
 - get_system_health: 系统+Docker状态
 - get_recent_changes: CHANGELOG变更
 - get_task_queue: 开发任务队列
 - get_vectorize_status: 向量化进度
 
 网络搜索说明:
-- 使用 OpenRouter 的 Perplexity sonar 模型
-- 自动读取 ~/.secrets/openrouter_api_key.txt
-- 无需额外配置 API key
+- 单入口聚合：Exa (语义) → Tavily (AI优化) → DDGS (零成本保底)
+- API Key 配置在 ~/.secrets/global.env
+- 内置月度用量追踪，防止超额
 """
 
-import subprocess
 import json
 import sys
 from pathlib import Path
@@ -77,13 +78,9 @@ def search_knowledge(query: str, top_k: int = 5) -> str:
 @mcp.tool()
 def web_search(query: str, count: int = 5) -> str:
     """
-    网络搜索（替代 Claude Code 内置 WebSearch）
+    多端聚合搜索，自动降级 + 用量追踪
 
-    优先级（智谱优先）：
-    1. 智谱 GLM web_search（免费，首选）
-    2. GitHub 搜索（免费，适合技术仓库）
-    3. 阿里通义深度研究（$0.0004/次，备用）
-    4. Perplexity sonar（$0.005/次，备用）
+    降级链: Exa (语义) → Tavily (AI优化) → DDGS (DuckDuckGo, 零成本)
 
     Args:
         query: 搜索关键词
@@ -92,52 +89,10 @@ def web_search(query: str, count: int = 5) -> str:
     Returns:
         JSON 格式的搜索结果
     """
-    import os
-    import urllib.request
-    import urllib.parse
-    import re
+    from search.search_multi import search as multi_search
 
-    # 获取配置
-    zhipu_key = ""
-    gh_token = ""
-    api_key = ""
-    env_path = Path.home() / ".secrets" / "global.env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if line.startswith("ZHIPU_API_KEY="):
-                zhipu_key = line.split("=")[1].strip()
-            if line.startswith("GH_TOKEN="):
-                gh_token = line.split("=")[1].strip()
-            if line.startswith("OPENROUTER_API_KEY="):
-                api_key = line.split("=")[1].strip()
-
-    # 优先级 1: 智谱 GLM web_search（免费，首选，30秒超时）
-    if zhipu_key:
-        result = _search_zhipu(query, count, zhipu_key)
-        # 成功且有结果才返回，否则继续 fallback
-        if "error" not in result and result.get("count", 0) > 0:
-            return json.dumps(result, ensure_ascii=False, indent=2)
-
-    # 优先级 2: GitHub 搜索（免费，适合技术内容）
-    if gh_token and _is_technical_query(query):
-        result = _search_github(query, count, gh_token)
-        if "error" not in result and result.get("count", 0) > 0:
-            return json.dumps(result, ensure_ascii=False, indent=2)
-
-    # 优先级 3: 阿里通义深度研究（备用）
-    if api_key:
-        result = _search_tongyi_deep(query, count, api_key)
-        if "error" not in result and result.get("count", 0) > 0:
-            return json.dumps(result, ensure_ascii=False, indent=2)
-
-    # 优先级 4: Perplexity 备用
-    if api_key:
-        result = _search_perplexity(query, count, api_key)
-        if "error" not in result and result.get("count", 0) > 0:
-            return json.dumps(result, ensure_ascii=False, indent=2)
-
-    return json.dumps({"error": "所有搜索方案失败", "attempted": ["zhipu", "github", "tongyi", "perplexity"]}, ensure_ascii=False, indent=2)
+    result = multi_search(query, count)
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 # ============================================================================
@@ -149,7 +104,7 @@ def WebSearch(query: str) -> str:
     """
     网络搜索工具（覆盖 Claude Code 内置 WebSearch）
 
-    使用智谱 GLM web_search 实现，免费且无需 haiku 模型。
+    多后端聚合搜索：Exa → Tavily → DDGS
 
     Args:
         query: 搜索关键词
@@ -157,249 +112,54 @@ def WebSearch(query: str) -> str:
     Returns:
         搜索结果，包含 URL 列表和摘要
     """
-    # 调用内部实现
     result = web_search(query, count=5)
 
-    # 解析并格式化为 Sources 格式
-    import json
     try:
         data = json.loads(result)
         if "error" in data:
             return f"搜索失败: {data['error']}"
 
-        # 格式化为用户友好的输出
         output = f"搜索: {query}\n\n"
-        output += f"方法: {data.get('method', 'unknown')}\n\n"
+        output += f"来源: {data.get('provider', 'unknown')}\n\n"
 
         results = data.get("results", [])
         if results:
             output += "结果:\n"
             for r in results:
-                output += f"- [{r.get('title', '链接')}]({r.get('url', '')})\n"
-
-        answer = data.get("answer", "")
-        if answer:
-            output += f"\n摘要:\n{answer[:500]}..."
+                title = r.get("title", "链接")
+                url = r.get("url", "")
+                output += f"- [{title}]({url})\n"
+                snippet = r.get("snippet", "")
+                if snippet:
+                    output += f"  {snippet[:150]}\n"
 
         return output
-    except:
+    except json.JSONDecodeError:
         return result
 
 
-def _search_zhipu(query: str, count: int, api_key: str) -> dict:
-    """智谱 GLM web_search（首选，免费）
-
-    使用 subprocess + curl 调用，避免 urllib 超时问题。
+@mcp.tool()
+def web_search_status() -> str:
     """
-    import subprocess
-    import re
-    import time
+    查询搜索 API 用量状态
 
-    start_time = time.time()
-    url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-    data = {
-        "model": "glm-4.5",
-        "messages": [{"role": "user", "content": f"搜索: {query}。请列出相关链接。"}],
-        "tools": [{"type": "web_search", "web_search": {"search_result": True}}],
-        "stream": False
-    }
+    Returns:
+        各 provider 的已用/限额/剩余
+    """
+    from search.search_multi import get_quota_status
 
-    try:
-        # 使用 curl 调用 API，30秒超时以加快 fallback
-        result = subprocess.run(
-            [
-                "curl", "-s", "-m", "30",
-                "-H", "Content-Type: application/json",
-                "-H", f"Authorization: Bearer {api_key}",
-                "-d", json.dumps(data),
-                url
-            ],
-            capture_output=True,
-            text=True,
-            timeout=35
-        )
-
-        elapsed = time.time() - start_time
-
-        if result.returncode != 0:
-            return {"error": f"curl 失败 (耗时{elapsed:.1f}s): {result.stderr[:100]}"}
-
-        response = json.loads(result.stdout)
-
-        # 检查 API 返回是否有错误
-        if "error" in response:
-            return {"error": f"智谱 API 错误: {response['error']}"}
-
-        message = response["choices"][0]["message"]
-        content = message.get("content", "")
-        reasoning = message.get("reasoning_content", "")
-
-        # 提取 URL 作为参考来源
-        urls = re.findall(r'https?://[^\s\)\]\>\"]+', content)
-
-        results = []
-        for i, url_item in enumerate(urls[:count]):
-            results.append({
-                "rank": i + 1,
-                "url": url_item,
-                "source": "zhipu-glm-web_search"
-            })
-
-        return {
-            "query": query,
-            "method": "zhipu-glm-4.5-web_search (免费)",
-            "count": len(results),
-            "results": results,
-            "answer": content[:1000],
-            "reasoning": reasoning[:300] if reasoning else None,
-            "model": response.get("model", "glm-4.5"),
-            "usage": response.get("usage", {}),
-            "elapsed_seconds": round(elapsed, 1)
-        }
-
-    except subprocess.TimeoutExpired:
-        elapsed = time.time() - start_time
-        return {"error": f"智谱搜索超时 (耗时{elapsed:.1f}s，自动fallback)"}
-    except json.JSONDecodeError as e:
-        return {"error": f"JSON 解析失败: {str(e)[:50]}"}
-    except Exception as e:
-        elapsed = time.time() - start_time
-        return {"error": f"智谱搜索失败 (耗时{elapsed:.1f}s): {str(e)[:50]}"}
-
-
-def _is_technical_query(query: str) -> bool:
-    """判断是否是技术查询（适合 GitHub 搜索）"""
-    tech_keywords = ["github", "repo", "library", "package", "npm", "pip", "git", "code", "api", "sdk", "cli", "framework"]
-    return any(kw in query.lower() for kw in tech_keywords)
-
-
-def _search_tongyi_deep(query: str, count: int, api_key: str) -> dict:
-    """阿里通义深度研究（最便宜，$0.0004/次）"""
-    try:
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        }
-        data = {
-            "model": "alibaba/tongyi-deepresearch-30b-a3b",
-            "messages": [{"role": "user", "content": f"搜索: {query}\n列出 {count} 个最相关的结果，包含标题和链接。"}]
-        }
-
-        req = urllib.request.Request(url, json.dumps(data).encode(), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            response = json.loads(resp.read().decode())
-
-        content = response["choices"][0]["message"]["content"]
-
-        # 提取 URL
-        urls = re.findall(r'https?://[^\s\)\]\>\"]+', content)
-
-        results = []
-        for i, url in enumerate(urls[:count]):
-            results.append({
-                "rank": i + 1,
-                "url": url,
-                "source": "tongyi-deepresearch"
-            })
-
-        return {
-            "query": query,
-            "method": "tongyi-deepresearch (阿里通义)",
-            "count": len(results),
-            "results": results,
-            "cost_usd": response.get("usage", {}).get("cost", 0),
-            "full_response": content[:500]
-        }
-
-    except Exception as e:
-        return {"error": f"通义搜索失败: {str(e)}"}
-
-
-def _search_github(query: str, count: int, token: str) -> dict:
-    """GitHub 仓库搜索（完全免费）"""
-    try:
-        url = f"https://api.github.com/search/repositories?q={urllib.parse.quote(query)}&per_page={count}"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            response = json.loads(resp.read().decode())
-
-        results = []
-        for item in response.get("items", [])[:count]:
-            results.append({
-                "rank": len(results) + 1,
-                "title": item.get("full_name", ""),
-                "url": item.get("html_url", ""),
-                "description": (item.get("description") or "")[:100],
-                "stars": item.get("stargazers_count", 0),
-                "language": item.get("language", ""),
-                "source": "github"
-            })
-
-        return {
-            "query": query,
-            "method": "github (免费)",
-            "total_count": response.get("total_count", 0),
-            "count": len(results),
-            "results": results
-        }
-
-    except Exception as e:
-        return {"error": f"GitHub 搜索失败: {str(e)}"}
-
-
-def _search_perplexity(query: str, count: int, api_key: str) -> dict:
-    """使用 OpenRouter Perplexity 搜索"""
-    try:
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "HTTP-Referer": "https://github.com/zhiwei-bot"
-        }
-        data = {
-            "model": "perplexity/sonar",
-            "messages": [{"role": "user", "content": f"搜索: {query}\n列出 {count} 个相关结果，包含标题和URL。"}],
-            "max_tokens": 500
-        }
-
-        req = urllib.request.Request(url, json.dumps(data).encode(), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            response = json.loads(resp.read().decode())
-
-        content = response["choices"][0]["message"]["content"]
-
-        # 提取 URL
-        import re
-        urls = re.findall(r'https?://[^\s\)\]\>\"]+', content)
-
-        results = []
-        for i, url in enumerate(urls[:count]):
-            # 提取标题（URL 前的文字）
-            title_match = re.search(rf'([^\n]+)\s*{re.escape(url)}', content)
-            title = title_match.group(1).strip() if title_match else f"结果 {i+1}"
-            results.append({
-                "rank": i + 1,
-                "title": title[:80],
-                "url": url,
-                "source": "perplexity"
-            })
-
-        return {
-            "query": query,
-            "method": "perplexity/sonar",
-            "count": len(results),
-            "results": results,
-            "cost_usd": response.get("usage", {}).get("cost", 0)
-        }
-
-    except Exception as e:
-        return {"error": f"Perplexity 搜索失败: {str(e)}"}
+    status = get_quota_status()
+    lines = ["API 搜索用量统计 (本月)", ""]
+    for provider, info in status.items():
+        used = info["used"]
+        limit = info["limit"]
+        avail = "✅" if info["available"] else "❌ 已超额"
+        if limit == "unlimited":
+            lines.append(f"  {provider}: {used} 次 (无限) {avail}")
+        else:
+            remaining = info["remaining"]
+            lines.append(f"  {provider}: {used}/{limit} (剩余 {remaining}) {avail}")
+    return "\n".join(lines)
 
 
 @mcp.tool()
