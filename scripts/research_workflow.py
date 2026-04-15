@@ -57,29 +57,21 @@ def research_workflow(topic: str, top_k: int = 50, dry_run: bool = False) -> Pat
 
     # ===== Phase 2: 合并笔记 =====
     print("\n[Phase 2] 合并笔记...")
+
+    # 直接使用检索结果生成小文件（NotebookLM 大文件上传有限制）
     combined_file = tempfile.mktemp(suffix=".md", prefix="research_")
 
-    # 使用 shell 展开 ~ 路径，并用 shlex.quote 防止注入
-    safe_path = shlex.quote(combined_file)
-    result = run_cmd([
-        "bash", "-c",
-        f"source ~/zhiwei-shared-venv/bin/activate && obs2nlm --vault ~/Documents/ZhiweiVault --source {safe_path}"
-    ], check=False)
+    print("  使用检索结果生成源文件...")
+    with open(combined_file, 'w') as f:
+        f.write(f"# {topic}\n\n")
+        f.write("## 相关文档片段\n\n")
+        for i, r in enumerate(results[:30]):  # 限制 30 条避免过大
+            text = getattr(r, 'text', '')[:800]
+            src = getattr(r, 'source', '')
+            f.write(f"### [{i+1}] {Path(src).name}\n\n{text}\n\n")
 
-    if Path(combined_file).exists():
-        size = Path(combined_file).stat().st_size / 1024 / 1024
-        print(f"✅ 合并完成: {combined_file} ({size:.1f} MB)")
-    else:
-        print("⚠️ 合并文件未生成，将直接使用检索文本")
-        # 备用方案：直接写入检索结果
-        with open(combined_file, 'w') as f:
-            f.write(f"# {topic} 研究资料\n\n")
-            f.write("## 相关文档片段\n\n")
-            for i, r in enumerate(results[:20]):
-                text = getattr(r, 'text', '')[:500]
-                src = getattr(r, 'source', '')
-                f.write(f"### {i+1}. {Path(src).name}\n\n{text}...\n\n")
-        print(f"✅ 备用文件已生成: {combined_file}")
+    size = Path(combined_file).stat().st_size / 1024
+    print(f"✅ 源文件生成完成: {combined_file} ({size:.1f} KB)")
 
     # ===== Phase 3: NotebookLM 处理 =====
     print("\n[Phase 3] NotebookLM 处理...")
@@ -130,7 +122,7 @@ def research_workflow(topic: str, top_k: int = 50, dry_run: bool = False) -> Pat
         ])
         run_cmd([
             "bash", "-c",
-            f"source ~/zhiwei-shared-venv/bin/activate && notebooklm source add {safe_path} --title {safe_topic}"
+            f"source ~/zhiwei-shared-venv/bin/activate && notebooklm source add {combined_file} --title {safe_topic}"
         ])
 
         # 等待处理
