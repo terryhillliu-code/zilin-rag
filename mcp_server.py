@@ -332,19 +332,26 @@ def search_social(query: str, sources: str = "reddit,hn,github", depth: str = "q
         cmd.append("--deep")
     elif depth == "quick":
         cmd.append("--quick")
+    # depth="normal" 不传 flag，走脚本默认行为
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=120
+            cmd, capture_output=True, text=True, timeout=300,
+            env={**os.environ}
         )
         if result.returncode == 0:
-            return result.stdout.strip()
+            # 清理 stdout 中可能的 Python 警告行，只返回 JSON
+            output = result.stdout.strip()
+            for i, line in enumerate(output.split('\n')):
+                if line.startswith('{') or line.startswith('['):
+                    return '\n'.join(output.split('\n')[i:])
+            return output
         stderr = result.stderr.strip()
         if stderr:
-            return json.dumps({"error": stderr[:500]}, ensure_ascii=False)
+            return json.dumps({"error": stderr[-500:]}, ensure_ascii=False)
         return json.dumps({"error": f"搜索失败，退出码 {result.returncode}"}, ensure_ascii=False)
     except subprocess.TimeoutExpired:
-        return json.dumps({"error": "搜索超时 (2分钟限制)，建议使用 --search 缩小搜索范围"}, ensure_ascii=False)
+        return json.dumps({"error": "搜索超时 (5分钟限制)，建议使用 --search 缩小搜索范围"}, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
 
