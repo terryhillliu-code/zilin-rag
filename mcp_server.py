@@ -342,9 +342,10 @@ def search_social(query: str, sources: str = "reddit,hn,github", depth: str = "q
         if result.returncode == 0:
             # 清理 stdout 中可能的 Python 警告行，只返回 JSON
             output = result.stdout.strip()
-            for i, line in enumerate(output.split('\n')):
+            lines = output.split('\n')
+            for i, line in enumerate(lines):
                 if line.startswith('{') or line.startswith('['):
-                    return '\n'.join(output.split('\n')[i:])
+                    return '\n'.join(lines[i:])
             return output
         stderr = result.stderr.strip()
         if stderr:
