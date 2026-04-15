@@ -1,7 +1,7 @@
 """
 多后端聚合搜索模块 — 单入口 + 用量追踪 + 本地缓存 + 诊断
 
-降级链: Exa (语义搜索) → Tavily (AI优化) → DDGS (DuckDuckGo, 零成本保底)
+降级链: Exa (语义搜索) → Brave (高性价比) → Tavily (AI优化) → DDGS (DuckDuckGo, 零成本保底)
 
 用法:
     >>> from search.search_multi import search, get_quota_status
@@ -32,6 +32,7 @@ DIAG_FILE = Path.home() / "zhiwei-rag" / "data" / "search_diag.json"
 DEFAULT_LIMITS = {
     "tavily": 1000,
     "exa": 1000,
+    "brave": 2000,
 }
 
 CACHE_TTL_SECONDS = 300  # 5 分钟
@@ -308,6 +309,57 @@ def _search_exa(query: str, count: int, api_key: str) -> list[dict]:
 
 
 # ============================================================================
+# Provider: Brave (高性价比搜索)
+# ============================================================================
+
+def _search_brave(query: str, count: int, api_key: str) -> list[dict]:
+    """Brave Web Search API — 20s 超时 + 2 次重试"""
+    if not api_key:
+        raise RuntimeError("Brave API key 为空")
+
+    try:
+        import httpx
+    except ImportError:
+        logger.warning("httpx 未安装，跳过 Brave 搜索")
+        return []
+
+    url = "https://api.search.brave.com/res/v1/web/search"
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": api_key,
+    }
+    params = {
+        "q": query,
+        "count": min(count, 20),  # Brave 最多返回 20 条
+    }
+
+    last_err = ""
+    for attempt in range(3):
+        try:
+            with httpx.Client(timeout=20) as client:
+                resp = client.get(url, params=params, headers=headers)
+                resp.raise_for_status()
+                resp_data = resp.json()
+
+            results = []
+            for item in resp_data.get("web", {}).get("results", [])[:count]:
+                results.append({
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("description", "")[:300]
+                })
+            return results
+        except Exception as e:
+            last_err = str(e)
+            if attempt < 2:
+                time.sleep(1 * (attempt + 1))
+                logger.debug(f"Brave 重试 {attempt + 1}/2: {e}")
+
+    raise RuntimeError(f"Brave 3 次尝试均失败: {last_err}")
+
+
+# ============================================================================
 # Provider: Tavily (AI优化搜索)
 # ============================================================================
 
@@ -360,11 +412,12 @@ def _search_ddgs(query: str, count: int, api_key: str = "") -> list[dict]:
 # 聚合入口
 # ============================================================================
 
-# Provider 优先级链: Exa → Tavily → DDGS
+# Provider 优先级链: Exa → Brave → Tavily → DDGS
 # 有 key 且未超限的优先，DDGS 始终兜底
 # config_key 是 _load_keys 返回的字典键名（小写）
 PROVIDER_CHAIN = [
     ("exa", _search_exa, "exa", "Exa (语义)"),
+    ("brave", _search_brave, "brave", "Brave"),
     ("tavily", _search_tavily, "tavily", "Tavily"),
     ("ddgs", _search_ddgs, None, "DuckDuckGo (保底)"),
 ]
