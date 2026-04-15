@@ -8,7 +8,6 @@
     python scripts/research_workflow.py --topic "Transformer" --dry-run
 """
 import argparse
-import json
 import os
 import subprocess
 import sys
@@ -118,7 +117,8 @@ def research_workflow(topic: str, top_k: int = 50, dry_run: bool = False) -> Pat
         print("❌ Notebook 创建失败，无法获取 notebook ID")
         Path(combined_file).unlink(missing_ok=True)
         sys.exit(1)
-        print(f"✅ Notebook 创建成功: {notebook_id}")
+
+    print(f"✅ Notebook 创建成功: {notebook_id}")
 
     try:
         # 上传源文件
