@@ -1,5 +1,5 @@
 """
-多后端聚合搜索模块 — 单入口 + 用量追踪
+多后端聚合搜索模块 — 单入口 + 用量追踪 + 本地缓存 + 诊断
 
 降级链: Exa (语义搜索) → Tavily (AI优化) → DDGS (DuckDuckGo, 零成本保底)
 
@@ -12,6 +12,7 @@
     >>> status = get_quota_status()  # 查看各 provider 用量
 """
 
+import hashlib
 import json
 import time
 import logging
@@ -25,11 +26,16 @@ logger = logging.getLogger("zhiwei-rag.search_multi")
 # ============================================================================
 
 QUOTA_FILE = Path.home() / "zhiwei-rag" / "data" / "search_quota.json"
+CACHE_FILE = Path.home() / "zhiwei-rag" / "data" / "search_cache.json"
+DIAG_FILE = Path.home() / "zhiwei-rag" / "data" / "search_diag.json"
 
 DEFAULT_LIMITS = {
     "tavily": 1000,
     "exa": 1000,
 }
+
+CACHE_TTL_SECONDS = 300  # 5 分钟
+DIAG_MAX_ENTRIES = 50
 
 # ============================================================================
 # 配置加载
@@ -154,11 +160,104 @@ def _make_result(provider: str, results: list[dict], elapsed: float) -> dict:
 
 
 # ============================================================================
+# 本地结果缓存
+# ============================================================================
+
+
+class SearchCache:
+    """本地 JSON 文件缓存，TTL 5 分钟"""
+
+    def __init__(self):
+        self._data = self._load()
+
+    def _load(self) -> dict:
+        if CACHE_FILE.exists():
+            try:
+                return json.loads(CACHE_FILE.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+        return {}
+
+    def _save(self):
+        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CACHE_FILE.write_text(json.dumps(self._data, ensure_ascii=False, indent=2))
+
+    @staticmethod
+    def _key(query: str, count: int) -> str:
+        raw = f"{query.lower().strip()}|{count}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    def get(self, query: str, count: int) -> dict | None:
+        k = self._key(query, count)
+        entry = self._data.get(k)
+        if not entry:
+            return None
+        if time.time() - entry["ts"] > CACHE_TTL_SECONDS:
+            del self._data[k]
+            self._save()
+            return None
+        return entry["result"]
+
+    def put(self, query: str, count: int, result: dict):
+        k = self._key(query, count)
+        self._data[k] = {"ts": time.time(), "result": result}
+        # 清理过期条目
+        now = time.time()
+        self._data = {
+            kk: vv for kk, vv in self._data.items()
+            if now - vv["ts"] <= CACHE_TTL_SECONDS
+        }
+        self._save()
+
+
+_cache = SearchCache()
+
+
+# ============================================================================
+# 诊断日志
+# ============================================================================
+
+_diag_entries: list[dict] = []
+
+
+def _record_diag(provider: str, status: str, elapsed: float, error: str = "", hit_cache: bool = False):
+    global _diag_entries
+    entry = {
+        "time": datetime.now().isoformat(),
+        "provider": provider,
+        "status": status,  # success / error / cache_hit
+        "elapsed_s": round(elapsed, 3),
+        "hit_cache": hit_cache,
+    }
+    if error:
+        entry["error"] = error
+    _diag_entries.append(entry)
+    _diag_entries = _diag_entries[-DIAG_MAX_ENTRIES:]
+
+    # 持久化
+    try:
+        DIAG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        DIAG_FILE.write_text(json.dumps(_diag_entries, ensure_ascii=False, indent=2))
+    except OSError:
+        pass
+
+
+def get_diagnostics() -> list[dict]:
+    """返回最近诊断记录"""
+    if not _diag_entries and DIAG_FILE.exists():
+        try:
+            _diag_entries.extend(json.loads(DIAG_FILE.read_text()))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return _diag_entries[-10:]
+
+
+# ============================================================================
 # Provider: Exa (语义搜索)
 # ============================================================================
 
 def _search_exa(query: str, count: int, api_key: str) -> list[dict]:
-    """Exa AI Semantic Search"""
+    """Exa AI Semantic Search — 20s 超时 + 2 次重试"""
     try:
         import httpx
     except ImportError:
@@ -177,26 +276,35 @@ def _search_exa(query: str, count: int, api_key: str) -> list[dict]:
         "useAutoprompt": True
     }
 
-    with httpx.Client(timeout=15) as client:
-        resp = client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        resp_data = resp.json()
+    last_err = ""
+    for attempt in range(3):
+        try:
+            with httpx.Client(timeout=20) as client:
+                resp = client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+                resp_data = resp.json()
 
-    results = []
-    for item in resp_data.get("results", [])[:count]:
-        snippet = ""
-        highlights = item.get("highlights", [])
-        if highlights:
-            snippet = highlights[0].get("text", "")
-        if not snippet:
-            snippet = resp_data.get("autopromptString", "")
-        results.append({
-            "title": item.get("title", ""),
-            "url": item.get("url", ""),
-            "snippet": snippet[:300]
-        })
+            results = []
+            for item in resp_data.get("results", [])[:count]:
+                snippet = ""
+                highlights = item.get("highlights", [])
+                if highlights:
+                    snippet = highlights[0].get("text", "")
+                if not snippet:
+                    snippet = resp_data.get("autopromptString", "")
+                results.append({
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": snippet[:300]
+                })
+            return results
+        except Exception as e:
+            last_err = str(e)
+            if attempt < 2:
+                time.sleep(1 * (attempt + 1))
+                logger.debug(f"Exa 重试 {attempt + 1}/2: {e}")
 
-    return results
+    raise RuntimeError(f"Exa 3 次尝试均失败: {last_err}")
 
 
 # ============================================================================
@@ -204,14 +312,14 @@ def _search_exa(query: str, count: int, api_key: str) -> list[dict]:
 # ============================================================================
 
 def _search_tavily(query: str, count: int, api_key: str) -> list[dict]:
-    """Tavily Search API (AI-optimized) — 使用官方 SDK"""
+    """Tavily Search API (AI-optimized) — 20s 超时"""
     try:
         from tavily import TavilyClient
     except ImportError:
         logger.warning("tavily-python SDK 未安装，跳过 Tavily 搜索")
         return []
 
-    client = TavilyClient(api_key=api_key)
+    client = TavilyClient(api_key=api_key, timeout=20)
     resp = client.search(query, max_results=count)
 
     results = []
@@ -230,17 +338,20 @@ def _search_tavily(query: str, count: int, api_key: str) -> list[dict]:
 # ============================================================================
 
 def _search_ddgs(query: str, count: int, api_key: str = "") -> list[dict]:
-    """DuckDuckGo Search (无需 API key)"""
+    """DuckDuckGo Search (无需 API key) — 带异常保护"""
     from ddgs import DDGS
 
     results = []
-    with DDGS() as ddgs:
-        for item in ddgs.text(query, max_results=count, region="cn-zh"):
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("href", ""),
-                "snippet": item.get("body", "")
-            })
+    try:
+        with DDGS() as ddgs:
+            for item in ddgs.text(query, max_results=count, region="cn-zh"):
+                results.append({
+                    "title": item.get("title", ""),
+                    "url": item.get("href", ""),
+                    "snippet": item.get("body", "")
+                })
+    except Exception as e:
+        raise RuntimeError(f"DDGS 搜索失败: {e}") from e
 
     return results
 
@@ -261,7 +372,7 @@ PROVIDER_CHAIN = [
 
 def search(query: str, count: int = 5) -> dict:
     """
-    多后端聚合搜索，自动降级 + 用量追踪
+    多后端聚合搜索，自动降级 + 用量追踪 + 本地缓存 + 诊断
 
     Args:
         query: 搜索查询
@@ -274,10 +385,19 @@ def search(query: str, count: int = 5) -> dict:
             "results": [{"title": "...", "url": "...", "snippet": "..."}],
             "elapsed_seconds": 1.2
         }
-        或 {"error": "..."}
+        或 {"error": "...", "diagnostics": "..."}
     """
+    # 1. 检查缓存
+    cached = _cache.get(query, count)
+    if cached:
+        _record_diag("cache", "cache_hit", 0, hit_cache=True)
+        logger.info(f"缓存命中: {query[:50]}")
+        cached["_cached"] = True
+        return cached
+
     keys = _load_keys()
     tried = []
+    errors = []
 
     for key_name, search_fn, config_key, label in PROVIDER_CHAIN:
         # 无需 API key 的 provider 不受配额限制
@@ -302,16 +422,29 @@ def search(query: str, count: int = 5) -> dict:
 
             if results and len(results) > 0:
                 _quota.record_usage(key_name)
+                result = _make_result(label, results, elapsed)
+                # 写入缓存
+                _cache.put(query, count, result)
+                _record_diag(label, "success", elapsed)
                 logger.info(f"搜索成功: {label} (耗时 {elapsed:.2f}s, {len(results)} 条)")
-                return _make_result(label, results, elapsed)
+                return result
             else:
                 logger.debug(f"{label} 返回空结果")
 
         except Exception as e:
+            err_msg = f"{label}: {e}"
+            errors.append(err_msg)
+            elapsed = time.monotonic() - start if 'start' in dir() else 0
+            _record_diag(label, "error", elapsed, error=err_msg)
             logger.debug(f"{label} 失败: {e}")
             continue
 
-    return {"error": f"所有搜索引擎均失败 (尝试了: {', '.join(tried)})"}
+    # 所有 provider 均失败，返回诊断信息
+    diag_summary = " | ".join(errors) if errors else "无可用 provider"
+    return {
+        "error": f"所有搜索引擎均失败 (尝试了: {', '.join(tried)})",
+        "diagnostics": diag_summary
+    }
 
 
 def get_quota_status() -> dict:

@@ -104,7 +104,7 @@ def WebSearch(query: str) -> str:
     """
     网络搜索工具（覆盖 Claude Code 内置 WebSearch）
 
-    多后端聚合搜索：Exa → Tavily → DDGS
+    多后端聚合搜索：Exa → Tavily → DDGS，带 5 分钟本地缓存
 
     Args:
         query: 搜索关键词
@@ -117,10 +117,13 @@ def WebSearch(query: str) -> str:
     try:
         data = json.loads(result)
         if "error" in data:
-            return f"搜索失败: {data['error']}"
+            diag = data.get("diagnostics", "")
+            return f"搜索失败: {data['error']}\n诊断: {diag}"
 
+        provider = data.get('provider', 'unknown')
+        cached_mark = " [缓存]" if data.get("_cached") else ""
         output = f"搜索: {query}\n\n"
-        output += f"来源: {data.get('provider', 'unknown')}\n\n"
+        output += f"来源: {provider}{cached_mark}\n\n"
 
         results = data.get("results", [])
         if results:
@@ -159,6 +162,31 @@ def web_search_status() -> str:
         else:
             remaining = info["remaining"]
             lines.append(f"  {provider}: {used}/{limit} (剩余 {remaining}) {avail}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def search_diagnostics() -> str:
+    """
+    搜索性能诊断报告
+
+    返回最近 10 次搜索的详细记录：provider、耗时、成功/失败原因、缓存命中
+    """
+    import json
+    from search.search_multi import get_diagnostics
+
+    entries = get_diagnostics()
+    if not entries:
+        return "暂无诊断记录"
+
+    lines = ["搜索性能诊断 (最近 10 次)", "=" * 40, ""]
+    for e in entries:
+        status_icon = {"success": "✅", "error": "❌", "cache_hit": "⚡"}.get(e["status"], "?")
+        lines.append(f"{status_icon} {e['provider']} | {e['elapsed_s']}s | {e['time']}")
+        if e.get("error"):
+            lines.append(f"   错误: {e['error']}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
