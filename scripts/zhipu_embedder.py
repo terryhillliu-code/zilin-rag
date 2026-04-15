@@ -9,6 +9,7 @@
     embeddings = embedder.embed(["文本1", "文本2"])
 """
 import os
+import time
 import requests
 
 ZHIPU_API_KEY = os.environ.get('ZHIPU_API_KEY', '')
@@ -16,11 +17,12 @@ ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/embeddings"
 
 
 class ZhipuEmbedder:
-    """智谱 Embedding API 客户端"""
+    """智谱 Embedding API 客户端（带重试机制）"""
 
-    def __init__(self, api_key: str | None = None, batch_size: int = 10):
+    def __init__(self, api_key: str | None = None, batch_size: int = 10, max_retries: int = 3):
         self.api_key = api_key or ZHIPU_API_KEY
         self.batch_size = batch_size
+        self.max_retries = max_retries
 
         if not self.api_key:
             raise ValueError("请设置 ZHIPU_API_KEY 环境变量")
@@ -34,10 +36,22 @@ class ZhipuEmbedder:
         all_embeddings: list[list[float]] = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
-            batch_embeddings = self._embed_batch(batch)
+            batch_embeddings = self._embed_batch_with_retry(batch)
             all_embeddings.extend(batch_embeddings)
 
         return all_embeddings
+
+    def _embed_batch_with_retry(self, texts: list[str]) -> list[list[float]]:
+        """带重试的 API 调用（指数退避：1s→2s→4s）"""
+        for attempt in range(self.max_retries):
+            try:
+                return self._embed_batch(texts)
+            except Exception as e:
+                if attempt == self.max_retries - 1:
+                    raise
+                wait_time = 2 ** attempt
+                print(f"  ⚠️ Embedding 失败(尝试{attempt+1}/{self.max_retries}): {e}, 等待{wait_time}s后重试", flush=True)
+                time.sleep(wait_time)
 
     def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         """单批 API 调用"""

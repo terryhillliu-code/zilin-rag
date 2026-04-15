@@ -25,6 +25,7 @@
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
@@ -320,8 +321,6 @@ def search_social(query: str, sources: str = "reddit,hn,github", depth: str = "q
     Returns:
         JSON 格式的搜索报告，含排名聚类、Best Takes 等
     """
-    import subprocess
-
     skill_dir = Path.home() / "last30days-skill"
     script = skill_dir / "scripts" / "last30days.py"
 
@@ -336,8 +335,7 @@ def search_social(query: str, sources: str = "reddit,hn,github", depth: str = "q
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=300,
-            env={**os.environ}
+            cmd, capture_output=True, text=True, timeout=120
         )
         if result.returncode == 0:
             return result.stdout.strip()
@@ -346,7 +344,7 @@ def search_social(query: str, sources: str = "reddit,hn,github", depth: str = "q
             return json.dumps({"error": stderr[:500]}, ensure_ascii=False)
         return json.dumps({"error": f"搜索失败，退出码 {result.returncode}"}, ensure_ascii=False)
     except subprocess.TimeoutExpired:
-        return json.dumps({"error": "搜索超时 (5分钟限制)，建议使用 --search 缩小搜索范围"}, ensure_ascii=False)
+        return json.dumps({"error": "搜索超时 (2分钟限制)，建议使用 --search 缩小搜索范围"}, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
 
