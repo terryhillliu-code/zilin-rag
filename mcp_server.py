@@ -22,9 +22,13 @@
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
+
+# 设置离线模式，避免 HuggingFace Hub 网络请求
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 # 创建 MCP Server 实例
 mcp = FastMCP("zhiwei-mcp", json_response=True)
