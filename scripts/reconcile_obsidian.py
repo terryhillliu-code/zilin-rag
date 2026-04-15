@@ -211,7 +211,7 @@ def reconcile(dry_run=False, limit=0, skip_chroma=False):
     
     if dry_run:
         print("💡 [Dry Run] 扫描完成，未执行任何修改。")
-        return
+        return 0, 0, len(stale_lance)
     
     # 6. 执行同步补全
     # 6.1 LanceDB 批量补全 (V9.0 优化)

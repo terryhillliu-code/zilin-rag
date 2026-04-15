@@ -16,6 +16,12 @@ import fcntl
 import jieba
 from contextlib import contextmanager
 
+
+def escape_sql_string(s: str) -> str:
+    """转义 SQL 字符串中的特殊字符（用于 LanceDB 过滤表达式）"""
+    return s.replace("'", "''")
+
+
 # ==================== 常驻 Embedding 服务客户端 ====================
 
 _EMBED_SERVICE_URL = "http://127.0.0.1:8765/embed"
@@ -261,8 +267,7 @@ class LanceStore:
         """删除指定来源的文档（用于增量更新）"""
         if self.table is None:
             return
-        # 转义单引号，防止 SQL 截断（如 "You're" -> "You''re")
-        safe_source = source.replace("'", "''")
+        safe_source = escape_sql_string(source)
         with self._write_lock():
             self.table.delete(f"source = '{safe_source}'")
     

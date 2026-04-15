@@ -59,6 +59,7 @@ dki:
     - 归档
     - Archive
     - attachments                  # 附件目录
+    - .duplicate_cleanup_backup    # 重复清理备份目录
 
 retrieval:
   vector_top_k: 15

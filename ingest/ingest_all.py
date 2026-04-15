@@ -43,7 +43,7 @@ def chunks_to_documents(
             category=str(category),
             tags=str(tags),
             char_count=chunk.char_count,
-            vector=vector.tolist()
+            vector=vector.tolist() if hasattr(vector, 'tolist') else vector  # 兼容numpy array和list
         )
         docs.append(doc)
     

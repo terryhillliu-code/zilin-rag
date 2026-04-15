@@ -14,13 +14,24 @@ import sys
 import yaml
 import shutil
 import argparse
+import subprocess
+import tempfile
+import lancedb
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from ingest.lance_store import escape_sql_string
+from utils.alert_pusher import alert_index_sync_failure
 
 # 配置
 INBOX_PATH = Path.home() / "Documents" / "ZhiweiVault" / "Inbox"
 VAULT_PATH = Path.home() / "Documents" / "ZhiweiVault"
+
+# RAG 配置
+RAG_VENV = Path.home() / "zhiwei-shared-venv" / "bin" / "python3"
+RAG_INGEST_SCRIPT = Path.home() / "zhiwei-rag" / "scripts" / "ingest_cloud_fast.py"
 
 # 分类映射 (tag prefix -> folder)
 TAG_TO_FOLDER = {
@@ -142,12 +153,18 @@ def classify_file(frontmatter: dict, content: str) -> str:
 
 
 def process_file(filepath: Path, dry_run: bool = False) -> dict:
-    """处理单个文件"""
+    """处理单个文件
+
+    Returns:
+        dict with keys: file, status, target, reason, moved_src, moved_dst
+    """
     result = {
         "file": filepath.name,
         "status": "skip",
         "target": None,
-        "reason": ""
+        "reason": "",
+        "moved_src": None,
+        "moved_dst": None,
     }
 
     try:
@@ -186,6 +203,8 @@ def process_file(filepath: Path, dry_run: bool = False) -> dict:
         # 移动文件
         if not dry_run:
             shutil.move(str(filepath), str(target_file))
+            result["moved_src"] = str(filepath)
+            result["moved_dst"] = str(target_file)
 
         result["status"] = "moved"
         result["reason"] = f"已移动到 {target_folder}"
@@ -229,12 +248,19 @@ def main():
         "skip": 0,
     }
 
+    # 收集移动的文件（用于索引同步）
+    moved_files: List[Tuple[str, str]] = []
+
     # 处理
     for i, filepath in enumerate(md_files, 1):
         result = process_file(filepath, args.dry_run)
 
         # 统计
         stats[result["status"]] = stats.get(result["status"], 0) + 1
+
+        # 收集移动记录
+        if result["status"] == "moved" and result["moved_dst"]:
+            moved_files.append((result["moved_src"], result["moved_dst"]))
 
         # 输出
         status_icon = {
@@ -264,6 +290,57 @@ def main():
         print()
         print("⚠️  预览模式，未实际移动文件")
         print("   移除 --dry-run 参数执行实际移动")
+
+    # 索引同步：批量处理移动的文件
+    if moved_files and not args.dry_run:
+        print()
+        print("=" * 60)
+        print("索引同步: 开始更新 LanceDB...")
+        print(f"  移动文件数: {len(moved_files)}")
+
+        # Step 1: 删除旧位置的陈旧索引
+        print("  [1/2] 删除旧索引...")
+        try:
+            config_path = Path(__file__).parent.parent / "config.yaml"
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            db = lancedb.connect(config['paths']['lance_db'])
+            tbl = db.open_table('documents')
+
+            old_sources = [src for src, dst in moved_files]
+            conditions = [f"source = '{escape_sql_string(s)}'" for s in old_sources]
+            sql = " OR ".join(conditions)
+            tbl.delete(sql)
+            print(f"      已删除 {len(old_sources)} 条旧索引")
+        except Exception as e:
+            print(f"      ⚠️ 删除旧索引失败: {e}")
+
+        # Step 2: 索引新位置
+        print("  [2/2] 索引新位置...")
+        new_files = [dst for src, dst in moved_files]
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write('\n'.join(new_files))
+            list_file = f.name
+
+        try:
+            result = subprocess.run(
+                [str(RAG_VENV), str(RAG_INGEST_SCRIPT), "--list", list_file],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+
+            if result.returncode == 0:
+                print(f"      ✅ 已索引 {len(new_files)} 个文件")
+            else:
+                print(f"      ⚠️ 索引失败: {result.stderr[:100]}")
+                alert_index_sync_failure(len(moved_files), result.stderr[:200])
+        except Exception as e:
+            print(f"      ❌ 索引异常: {e}")
+            alert_index_sync_failure(len(moved_files), str(e))
+        finally:
+            Path(list_file).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
