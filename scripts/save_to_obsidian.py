@@ -7,11 +7,12 @@
 """
 import argparse
 import shutil
+import sys
 from pathlib import Path
 from datetime import datetime
 
 
-def save_to_obsidian(source_file: str, topic: str, category: str = "研究报告") -> Path:
+def save_to_obsidian(source_file: str, topic: str, category: str = "研究报告", overwrite: bool = False) -> Path | None:
     """将文件保存到 Obsidian Vault"""
     source = Path(source_file).expanduser()
 
@@ -28,8 +29,20 @@ def save_to_obsidian(source_file: str, topic: str, category: str = "研究报告
 
     # 目标文件名
     date_str = datetime.now().strftime("%Y-%m-%d")
-    target_name = f"PAPER_{date_str}_{topic}.md"
-    target_file = target_dir / target_name
+    base_name = f"PAPER_{date_str}_{topic}"
+    target_file = target_dir / f"{base_name}.md"
+
+    # 处理文件冲突
+    if target_file.exists():
+        if overwrite:
+            print(f"⚠️ 覆盖已存在的文件: {target_file}")
+        else:
+            # 添加版本号
+            version = 2
+            while target_file.exists():
+                target_file = target_dir / f"{base_name}_v{version}.md"
+                version += 1
+            print(f"⚠️ 文件已存在，使用新名称: {target_file.name}")
 
     # 复制文件
     shutil.copy2(source, target_file)
@@ -43,8 +56,11 @@ if __name__ == "__main__":
     parser.add_argument("--file", type=str, required=True, help="源文件路径")
     parser.add_argument("--topic", type=str, required=True, help="研究主题")
     parser.add_argument("--category", type=str, default="研究报告", help="目标目录")
+    parser.add_argument("--overwrite", action="store_true", help="覆盖已存在的文件")
     args = parser.parse_args()
 
-    result = save_to_obsidian(args.file, args.topic, args.category)
+    result = save_to_obsidian(args.file, args.topic, args.category, args.overwrite)
     if result:
         print(f"\n🎉 完成! 文件路径: {result}")
+    else:
+        sys.exit(1)

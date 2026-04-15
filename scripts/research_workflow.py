@@ -8,11 +8,12 @@
     python scripts/research_workflow.py --topic "Transformer" --dry-run
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
 import tempfile
-import time
+import shlex
 from pathlib import Path
 
 # 离线模式
@@ -24,8 +25,12 @@ from api import retrieve
 
 def run_cmd(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
     """执行命令并返回结果"""
-    print(f"  执行: {' '.join(cmd)}")
-    return subprocess.run(cmd, capture_output=True, text=True, check=check)
+    print(f"  执行: {' '.join(cmd[:3])}...")
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, check=check)
+    except subprocess.CalledProcessError as e:
+        print(f"  ❌ 命令失败: {e.stderr[:200] if e.stderr else str(e)}")
+        raise
 
 
 def research_workflow(topic: str, top_k: int = 50, dry_run: bool = False) -> Path:
@@ -55,15 +60,12 @@ def research_workflow(topic: str, top_k: int = 50, dry_run: bool = False) -> Pat
     print("\n[Phase 2] 合并笔记...")
     combined_file = tempfile.mktemp(suffix=".md", prefix="research_")
 
-    # 使用 obs2nlm 合整个 Vault（简化版，实际应按目录筛选）
-    obs2nlm_cmd = [
-        "obs2nlm",
-        "--vault", "~/Documents/ZhiweiVault",
-        "--source", combined_file
-    ]
-
-    # 使用 shell 展开 ~ 路径
-    result = run_cmd(["bash", "-c", f"source ~/zhiwei-shared-venv/bin/activate && obs2nlm --vault ~/Documents/ZhiweiVault --source {combined_file}"])
+    # 使用 shell 展开 ~ 路径，并用 shlex.quote 防止注入
+    safe_path = shlex.quote(combined_file)
+    result = run_cmd([
+        "bash", "-c",
+        f"source ~/zhiwei-shared-venv/bin/activate && obs2nlm --vault ~/Documents/ZhiweiVault --source {safe_path}"
+    ], check=False)
 
     if Path(combined_file).exists():
         size = Path(combined_file).stat().st_size / 1024 / 1024
@@ -95,26 +97,55 @@ def research_workflow(topic: str, top_k: int = 50, dry_run: bool = False) -> Pat
     if "Created notebook:" in output:
         notebook_id = output.split("Created notebook:")[1].split("-")[0].strip()
     else:
-        notebook_id = None
-        # 从 list 获取最新
-        list_result = run_cmd(["bash", "-c", "source ~/zhiwei-shared-venv/bin/activate && notebooklm list"])
-        # 解析最新 notebook
+        # 从 list 获取最新 notebook
+        print("  从列表获取 notebook ID...")
+        list_result = run_cmd([
+            "bash", "-c",
+            "source ~/zhiwei-shared-venv/bin/activate && notebooklm list"
+        ])
+        # 解析表格输出，提取第一个 ID
+        lines = list_result.stdout.strip().split('\n')
+        for line in lines:
+            if line.startswith('│') and '│' in line[10:]:
+                parts = [p.strip() for p in line.split('│')]
+                if parts and len(parts) > 1 and parts[1] and not parts[1].startswith('ID'):
+                    notebook_id = parts[1]
+                    if len(notebook_id) > 8:
+                        notebook_id = notebook_id[:8]  # 取前8位
+                    break
 
-    if notebook_id:
+    if not notebook_id:
+        print("❌ Notebook 创建失败，无法获取 notebook ID")
+        Path(combined_file).unlink(missing_ok=True)
+        sys.exit(1)
         print(f"✅ Notebook 创建成功: {notebook_id}")
 
+    try:
         # 上传源文件
         print("  上传源文件...")
-        run_cmd(["bash", "-c", f"source ~/zhiwei-shared-venv/bin/activate && notebooklm use {notebook_id}"])
-        run_cmd(["bash", "-c", f"source ~/zhiwei-shared-venv/bin/activate && notebooklm source add {combined_file} --title '{topic}研究资料'"])
+        safe_topic = shlex.quote(topic)
+        run_cmd([
+            "bash", "-c",
+            f"source ~/zhiwei-shared-venv/bin/activate && notebooklm use {notebook_id}"
+        ])
+        run_cmd([
+            "bash", "-c",
+            f"source ~/zhiwei-shared-venv/bin/activate && notebooklm source add {safe_path} --title {safe_topic}"
+        ])
 
         # 等待处理
         print("  等待源文件处理...")
-        run_cmd(["bash", "-c", "source ~/zhiwei-shared-venv/bin/activate && notebooklm source wait"])
+        run_cmd([
+            "bash", "-c",
+            "source ~/zhiwei-shared-venv/bin/activate && notebooklm source wait"
+        ])
 
         # 生成报告
         print("  生成研究报告...")
-        run_cmd(["bash", "-c", f"source ~/zhiwei-shared-venv/bin/activate && notebooklm generate report --format study-guide --language zh_Hans --wait"])
+        run_cmd([
+            "bash", "-c",
+            f"source ~/zhiwei-shared-venv/bin/activate && notebooklm generate report --format study-guide --language zh_Hans --wait"
+        ])
 
         # 下载报告
         print("\n[Phase 4] 下载报告...")
@@ -122,7 +153,11 @@ def research_workflow(topic: str, top_k: int = 50, dry_run: bool = False) -> Pat
         output_dir.mkdir(parents=True, exist_ok=True)
         output_file = output_dir / f"{topic}.md"
 
-        run_cmd(["bash", "-c", f"source ~/zhiwei-shared-venv/bin/activate && notebooklm download report {output_file}"])
+        safe_output = shlex.quote(str(output_file))
+        run_cmd([
+            "bash", "-c",
+            f"source ~/zhiwei-shared-venv/bin/activate && notebooklm download report {safe_output}"
+        ])
 
         print(f"✅ 报告已保存: {output_file}")
 
@@ -130,8 +165,10 @@ def research_workflow(topic: str, top_k: int = 50, dry_run: bool = False) -> Pat
         Path(combined_file).unlink(missing_ok=True)
 
         return output_file
-    else:
-        print("❌ Notebook 创建失败")
+
+    except subprocess.CalledProcessError as e:
+        print(f"❌ NotebookLM 处理失败: {e}")
+        Path(combined_file).unlink(missing_ok=True)
         sys.exit(1)
 
 
