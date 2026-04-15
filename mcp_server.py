@@ -5,11 +5,13 @@
 使用 FastMCP 实现 (官方 Python SDK)
 参考：https://github.com/modelcontextprotocol/python-sdk
 
-工具列表 (7个):
+工具列表 (8个):
 - search_knowledge: 三轨检索（本地知识库）
 - web_search: 多后端聚合搜索（Exa → Tavily → DDGS）
 - WebSearch: web_search 的人类友好格式
 - web_search_status: API 用量查询
+- search_diagnostics: 搜索性能诊断
+- search_social: 社交平台深度搜索（last30days v3 引擎）
 - get_system_health: 系统+Docker状态
 - get_recent_changes: CHANGELOG变更
 - get_task_queue: 开发任务队列
@@ -295,6 +297,56 @@ def get_task_queue(limit: int = 10) -> str:
             "recent_tasks": tasks
         }, ensure_ascii=False, indent=2)
 
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def search_social(query: str, sources: str = "reddit,hn,github", depth: str = "quick") -> str:
+    """
+    社交平台深度搜索（last30days v3 引擎）
+
+    搜索 Reddit、Hacker News、GitHub 等平台的最近 30 天内容，
+    按真实用户互动度（upvote/like/押注金额）评分并合成报告。
+
+    免费源（无需 API Key）：reddit、hn（Hacker News）、polymarket、github
+    可选源：x（Twitter）、youtube、tiktok、threads、pinterest、bluesky
+
+    Args:
+        query: 搜索关键词
+        sources: 逗号分隔的源列表，默认 reddit,hn,github
+        depth: 搜索深度，quick(快速) / normal / deep
+
+    Returns:
+        JSON 格式的搜索报告，含排名聚类、Best Takes 等
+    """
+    import subprocess
+
+    skill_dir = Path.home() / "last30days-skill"
+    script = skill_dir / "scripts" / "last30days.py"
+
+    if not script.exists():
+        return json.dumps({"error": "last30days-skill 未安装，请运行 git clone 到 ~/last30days-skill"}, ensure_ascii=False)
+
+    cmd = [sys.executable, str(script), query, f"--search={sources}"]
+    if depth == "deep":
+        cmd.append("--deep")
+    elif depth == "quick":
+        cmd.append("--quick")
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300,
+            env={**os.environ}
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        stderr = result.stderr.strip()
+        if stderr:
+            return json.dumps({"error": stderr[:500]}, ensure_ascii=False)
+        return json.dumps({"error": f"搜索失败，退出码 {result.returncode}"}, ensure_ascii=False)
+    except subprocess.TimeoutExpired:
+        return json.dumps({"error": "搜索超时 (5分钟限制)，建议使用 --search 缩小搜索范围"}, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
 
